@@ -1,17 +1,25 @@
 package recipes.users
 
-import akka.cluster.ddata.{Key, ORMap}
-import recipes.users.crdt.VersionedUsers
+import akka.cluster.ddata.{Key, ORMap, ReplicatedData}
+import recipes.users.crdt.{CrdtUsers, VersionedUsers}
 
 case class User(id: Long, login: String, active: Boolean)
 
 //object UsersKey extends Key[ORMap[String, VersionedUsers]]("users-by-shard")
 
-case class TopLevelUsersKey(hash: String) extends Key[ORMap[String, VersionedUsers]](hash)
+//One bucket may contain several
+case class UsersBucket(bucketNumber: Int) extends Key[ORMap[String, CrdtUsers]](bucketNumber.toString)
 
+case class VersionedUsersBucket(bucketNumber: Int) extends Key[VersionedUsers](bucketNumber.toString)
 
-trait Partitioner {
-  def getKey(key: Long): TopLevelUsersKey
+trait Partitioner[+T <: ReplicatedData] {
+  type ReplicatedKey <: Key[T]
+  //30 entities and 6 buckets.
+  //Each bucket contains 5 entities which means instead of one ORMap at least (30/5) = 6 ORMaps will be used
+  protected val maxNumber = 30l
+  protected val buckets = Array(5l, 10l, 15l, 20l, 25, maxNumber)
+
+  def getKey(key: Long): ReplicatedKey
 }
 
 /**
@@ -21,15 +29,21 @@ trait Partitioner {
  * and you may see inconsistencies between related entries.
  * Separated top level entries cannot be updated atomically together.
  */
-trait MultiMapsPartitioner extends Partitioner {
-  //30 entities and 6 buckets.
-  //Each bucket contains 5 entities which means instead of one ORMap at least (30/5) = 6 ORMaps will be used
-  val maxNumber = 30l
-  val buckets = Array(5l, 10l, 15l, 20l, 25, maxNumber)
-
-  override def getKey(key: Long): TopLevelUsersKey = {
+trait MultiMapsPartitioner extends Partitioner[ORMap[String, CrdtUsers]] {
+  override type ReplicatedKey = UsersBucket
+  override def getKey(key: Long) = {
     import scala.collection.Searching._
     val index = math.abs(key % maxNumber)
-    TopLevelUsersKey(s"bucket:${buckets.search(index).insertionPoint}")
+    UsersBucket(buckets.search(index).insertionPoint)
+  }
+}
+
+
+trait VersionVectorPartitioner extends Partitioner[VersionedUsers] {
+  override type ReplicatedKey = VersionedUsersBucket
+  override def getKey(key: Long) = {
+    import scala.collection.Searching._
+    val index = math.abs(key % maxNumber)
+    VersionedUsersBucket(buckets.search(index).insertionPoint)
   }
 }

@@ -85,7 +85,7 @@ object ReplicatedUsers extends App {
   val start = System.currentTimeMillis
   println(s"★ ★ ★ ★ ★ ★   Cluster has been formed   ★ ★ ★ ★ ★ ★")
 
-  val writerTimeout = 500.millis
+  val writerTimeout = 300.millis
   val readC = ReadLocal /*ReadAll(timeout = timeout)*/ /*ReadMajority(timeout)*/
 
   val shardIds = List[Long](2l, 7l, 16l)
@@ -95,11 +95,11 @@ object ReplicatedUsers extends App {
   ), s"writer-${shardIds(0)}")
 
   node2.actorOf(UserWriter.props(shardIds(1),
-    node2.actorOf(ReplicatorWriter.props(shardIds(1)), "writer-2"), writerTimeout, 0, 25
+    node2.actorOf(ReplicatorWriter.props(shardIds(1)), "writer-2"), writerTimeout, 0, 15
   ), s"writer-${shardIds(1)}")
 
   node3.actorOf(UserWriter.props(shardIds(2),
-    node3.actorOf(ReplicatorWriter.props(shardIds(2)), "writer-3"), writerTimeout, 0, 30
+    node3.actorOf(ReplicatorWriter.props(shardIds(2)), "writer-3"), writerTimeout, 0, 20
   ), s"writer-${shardIds(2)}")
 
   Helpers.wait(35.second)

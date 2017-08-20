@@ -9,13 +9,12 @@ import scala.collection.immutable.SortedMap
 
 /*
   VersionVector have 3 types of relationships
-
-    Descends A >= B
-    Dominates A > B   [{a:2}, {b:3}] dominates [{a:1}, {b:3}]
+       
+    A >= B - A descends B
+    A > B A dominates B example [{a:2}, {b:3}] dominates [{a:1}, {b:3}]
     Concurrent A | B
  */
 object VersionVector {
-
   sealed trait Ordering
 
   case object After extends Ordering
@@ -27,11 +26,10 @@ object VersionVector {
     */
   private case object FullOrder extends Ordering
 
-  def empty[A: Order] = VersionVector[A](SortedMap.empty[A, Long])
+  def empty[A](implicit ord: cats.Order[A]) = VersionVector[A](SortedMap.empty[A, Long])
 }
 
 trait VersionVectorLike[T] {
-
   type VV <: VersionVectorLike[T]
 
   /**
@@ -81,7 +79,7 @@ trait VersionVectorLike[T] {
   protected def size: Int
 }
 
-case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVectorLike[T] {
+case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVectorLike[T] with Serializable {
 
   import VersionVector._
 
@@ -179,12 +177,10 @@ case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVec
     else compare(this.elems.view.toSeq, that.elems.view.toSeq, Same)
   }
 
-
   /**
     * Computes the union of the nodes and maintains the highest clock value found for each
     */
   override def merge(that: VersionVector[T]): VersionVector[T] = {
-
     def iterate(s1: SortedMap[T, Long], s2: SortedMap[T, Long], acc: SortedMap[T, Long]): SortedMap[T, Long] = {
       if (s1.nonEmpty && s2.nonEmpty) {
         val (t1, c1) = s1.head
@@ -192,7 +188,7 @@ case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVec
         val sOrder = t1 compare t2
 
         if (sOrder == 0) {
-          // This elemens exists only in both maps, take the maximum clock value
+          // This elements exists only in both maps, take the maximum logical clock value
           val newAcc = acc.updated(t1, math.max(c1, c2))
           iterate(s1.tail, s2.tail, newAcc)
         } else if (sOrder < 0) {
@@ -210,8 +206,8 @@ case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVec
         acc ++ s1
     }
 
-    val newMap = iterate(this.elems, that.elems, SortedMap.empty[T, Long])
-    VersionVector(newMap)
+    val newEntries = iterate(this.elems, that.elems, SortedMap.empty[T, Long])
+    VersionVector(newEntries)
   }
 
   /**
@@ -220,5 +216,4 @@ case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVec
   override protected lazy val size: Int = elems.size
 
   private def nodeClock(node: T): Long = elems.getOrElse(node, 0)
-
 }

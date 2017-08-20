@@ -45,12 +45,13 @@ case class VersionedUsers(underlying: CrdtEntryLike[User] = SortedEntry()) exten
   def elements: Iterable[User] = underlying.users
 
   override def merge(that: VersionedUsers): VersionedUsers = {
-    //for debug
+    //debug
+    /*
     if (underlying.version != that.underlying.version) {
       println(s"concurrent:[${underlying.version} vs ${that.underlying.version}]")
     } else {
       println(s"[${underlying.version} vs ${that.underlying.version}]")
-    }
+    }*/
     if (underlying.version > that.underlying.version) this else that
   }
 }

@@ -4,31 +4,37 @@ import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Kill, Props}
 import akka.cluster.Cluster
 import akka.cluster.ddata.Replicator._
 import com.typesafe.config.ConfigFactory
-import recipes.users.{Journal, UsersReader, UsersWriter}
+import recipes.users.{UserWriter, UsersReader, ReplicatorWriter}
 import recipes.users.User
 
 import scala.concurrent.duration._
 
 object UsersByShardView {
-  def props(from: Int, to: Int, reader: ActorRef) = Props(new UsersByShardView(from, to, reader))
+  def props(shardIds: List[Long], reader: ActorRef) = Props(new UsersByShardView(shardIds, reader))
 }
 
-class UsersByShardView(from: Long, to: Long, reader: ActorRef) extends Actor with ActorLogging {
-  if (from < to) reader ! from else self ! Kill
+class UsersByShardView(shardIds: List[Long], reader: ActorRef) extends Actor with ActorLogging {
+  if (shardIds.isEmpty) self ! Kill else reader ! shardIds.head
 
-  def request(i: Long) = {
-    if (i < to) reader ! i else self ! Kill
-    context become await(i + 1)
+  def request(rest: List[Long]) = {
+    rest match {
+      case Nil =>
+        log.info("View kills itself")
+        self ! Kill
+      case shardId  ::  tail =>
+        reader !  shardId
+        context become await(shardId, tail)
+    }
   }
 
-  def await(i: Long): Receive = {
+  def await(i: Long, rest: List[Long]): Receive = {
     case usersByShard: Set[User] @unchecked =>
       //log.info(s"shardId:${i - 1} - users: ${usersByShard.toString}")
       log.info("All have been updated: " + usersByShard.forall(_.active == true))
-      request(i)
+      request(rest)
   }
 
-  override def receive: Receive = await(from + 1)
+  override def receive: Receive = await(shardIds.head, shardIds.tail)
 }
 
 //test:runMain recipes.ReplicatedUsers
@@ -82,22 +88,24 @@ object ReplicatedUsers extends App {
   val writerTimeout = 500.millis
   val readC = ReadLocal /*ReadAll(timeout = timeout)*/ /*ReadMajority(timeout)*/
 
-  node1.actorOf(Journal.props(1,
-    node1.actorOf(UsersWriter.props(1), "writer-1"), writerTimeout, 50, 15
-  ), "eh-1")
+  val shardIds = List[Long](2l, 7l, 16l)
 
-  node2.actorOf(Journal.props(1,
-    node2.actorOf(UsersWriter.props(2), "writer-2"), writerTimeout, 100, 25
-  ), "eh-2")
+  node1.actorOf(UserWriter.props(shardIds(0),
+    node1.actorOf(ReplicatorWriter.props(shardIds(0)), "writer-1"), writerTimeout, 0, 10
+  ), s"writer-${shardIds(0)}")
 
-  node3.actorOf(Journal.props(1,
-    node3.actorOf(UsersWriter.props(3), "writer-3"), writerTimeout, 150, 30
-  ), "eh-3")
+  node2.actorOf(UserWriter.props(shardIds(1),
+    node2.actorOf(ReplicatorWriter.props(shardIds(1)), "writer-2"), writerTimeout, 0, 25
+  ), s"writer-${shardIds(1)}")
 
-  Helpers.wait(40.second)
+  node3.actorOf(UserWriter.props(shardIds(2),
+    node3.actorOf(ReplicatorWriter.props(shardIds(2)), "writer-3"), writerTimeout, 0, 30
+  ), s"writer-${shardIds(2)}")
 
-  node1.actorOf(UsersByShardView.props(1, 4, node1.actorOf(UsersReader.props(readC), "reader-1")), "view-1")
-  node2.actorOf(UsersByShardView.props(1, 4, node2.actorOf(UsersReader.props(readC), "reader-2")), "view-2")
+  Helpers.wait(35.second)
+
+  node1.actorOf(UsersByShardView.props(shardIds, node1.actorOf(UsersReader.props(readC), "reader-1")), "view-1")
+  node2.actorOf(UsersByShardView.props(shardIds, node2.actorOf(UsersReader.props(readC), "reader-2")), "view-2")
 
   Helpers.wait(6.second)
   println(s"★ ★ ★ ★ ★ ★   Shutdown the cluster after being up for ${System.currentTimeMillis - start} ms    ★ ★ ★ ★ ★ ★")

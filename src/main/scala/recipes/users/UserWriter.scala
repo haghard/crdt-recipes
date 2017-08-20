@@ -5,7 +5,7 @@ import java.util.concurrent.ThreadLocalRandom
 import scala.concurrent.duration.FiniteDuration
 import akka.actor.{ Actor, ActorLogging, ActorRef, Props }
 
-object Journal {
+object UserWriter {
 
   case class CreateUser(userId: Long, login: String, isActive: Boolean)
 
@@ -13,13 +13,12 @@ object Journal {
 
   case class DeleteUser(userId: Long)
 
-  def props(tenantId: Long, updater: ActorRef, delay: FiniteDuration, startWith: Int, limit: Int) =
-    Props(new Journal(tenantId, updater, delay, startWith, limit))
+  def props(shardId: Long, updater: ActorRef, delay: FiniteDuration, startWith: Int, limit: Int) =
+    Props(new UserWriter(shardId, updater, delay, startWith, limit))
 }
 
-class Journal(shardId: Long, updater: ActorRef, delay: FiniteDuration,
-    startWith: Long, limit: Int) extends Actor with ActorLogging {
-  import Journal._
+class UserWriter(shardId: Long, updater: ActorRef, delay: FiniteDuration, startWith: Long, limit: Int) extends Actor with ActorLogging {
+  import UserWriter._
 
   implicit val ex = context.system.dispatcher
   val cluster = Cluster(context.system)
@@ -59,10 +58,10 @@ class Journal(shardId: Long, updater: ActorRef, delay: FiniteDuration,
       userIds match {
         case userId :: rest =>
           updater ! UpdateUser(userId, s"new-login", true)
-          log.info(s"UpdateUser for shard: ${shardId} with id $userId")
+          //log.info(s"UpdateUser for shard: ${shardId} with id $userId")
           userIds = rest
         case Nil =>
-          log.info(s"Stop event-stream for shard: ${shardId}")
+          log.info(s"Stop user-writer for shardId:$shardId")
           context.stop(self)
       }
   }

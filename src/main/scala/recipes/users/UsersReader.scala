@@ -9,24 +9,23 @@ object UsersReader {
   def props(rc: ReadConsistency) = Props(new UsersReader(rc))
 }
 
-class UsersReader(readConsistency: ReadConsistency) extends Actor with ActorLogging {
+class UsersReader(readConsistency: ReadConsistency) extends Actor with ActorLogging with MultiMapsPartitioner {
   import UsersReader._
   val replicator = DistributedData(context.system).replicator
 
-  def getKey(shardId: Long) = s"shard.${shardId}"
-
   override def receive: Receive = {
     case shardId: Long =>
-      log.info(s"Read users for ${shardId}")
-      replicator ! Get(UsersKey, readConsistency, Some(ReaderContext(shardId, sender)))
-    case r @ GetSuccess(UsersKey, Some(ReaderContext(shardId, replyTo))) =>
-      r.get(UsersKey)
-        .get(getKey(shardId))
+      val key = getKey(shardId)
+      log.info(s"Read users for [${key} shardId:$shardId]")
+      replicator ! Get(key, readConsistency, Some(ReaderContext(shardId, sender)))
+    case r @ GetSuccess(k@TopLevelUsersKey(_), Some(ReaderContext(shardId, replyTo))) =>
+      r.get(k).get(shardId.toString)
+        //.get(getKey(shardId))
         .fold(replyTo ! Set.empty[User]) { users => replyTo ! users.elements }
-    case Replicator.NotFound(UsersKey, Some(ReaderContext(_, replyTo))) =>
-      log.info("NotFound")
+    case Replicator.NotFound(k@TopLevelUsersKey(_), Some(ReaderContext(shardId, replyTo))) =>
+      log.info(s"NotFound by [${k} shardId:$shardId]")
       replyTo ! Set.empty[User]
-    case GetFailure(UsersKey, Some(ReaderContext(shardId, replyTo))) =>
+    case GetFailure(k@TopLevelUsersKey(_), Some(ReaderContext(shardId, replyTo))) =>
       log.info(s"Read failure, try to read it from local replica {}", shardId)
   }
 }

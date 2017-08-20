@@ -2,6 +2,8 @@
 *.log
 target
 .idea/
+/.idea/
+.idea/libraries
 .idea_modules/
 out/
 *.iml

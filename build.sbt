@@ -1,29 +1,60 @@
-scalaVersion := "2.12.2"
+import com.typesafe.sbt.SbtMultiJvm
+import com.typesafe.sbt.SbtMultiJvm.MultiJvmKeys.MultiJvm
 
-lazy val akkaVersion = "2.5.4"
+val akkaVersion = "2.5.4"
 
-resolvers ++= Seq(
+/*resolvers ++= Seq(
   "maven central"   at "http://repo.maven.apache.org/maven2",
   "rbmhtechnology"  at "https://dl.bintray.com/rbmhtechnology/maven/"
-)
+)*/
 
-libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-actor" % akkaVersion,
-  "com.typesafe.akka" %% "akka-cluster" % akkaVersion,
-  "com.typesafe.akka" %% "akka-distributed-data" % akkaVersion,
-  "com.typesafe.akka" %% "akka-typed" % akkaVersion,
-  "eu.timepit"        %% "crjdt-core" % "0.0.7",
-  "com.twitter"       %% "algebird-core" % "0.13.0",
-  //"com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
-  //"ch.qos.logback" % "logback-classic" % "1.2.3",
+val project = Project(
+  id = "crdt-recipes",
+  base = file("."),
+  settings = Defaults.coreDefaultSettings ++ SbtMultiJvm.multiJvmSettings ++ Seq(
+    name := "crdt-recipes",
+    version := "1.0.0",
+    scalaVersion := "2.12.3",
+    libraryDependencies ++= Seq(
+      "com.typesafe.akka" %% "akka-actor" % akkaVersion,
+      "com.typesafe.akka" %% "akka-cluster" % akkaVersion,
+      //"com.typesafe.akka" %% "akka-cluster-tools" % akkaVersion,
+      "com.typesafe.akka" %%  "akka-cluster-sharding" % akkaVersion,
+      "com.typesafe.akka" %% "akka-distributed-data" % akkaVersion,
+      "com.typesafe.akka" %% "akka-http" % "10.0.9",
+      "com.typesafe.akka" %% "akka-http-testkit" % "10.0.9",
+      "com.typesafe.akka" %% "akka-typed" % akkaVersion,
+      "eu.timepit"        %% "crjdt-core" % "0.0.7",
+      "com.twitter"       %% "algebird-core" % "0.13.0",
+      "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
+      "ch.qos.logback" % "logback-classic" % "1.2.3",
 
-  "com.github.mpilquist" %% "simulacrum"   % "0.10.0",
-  "org.typelevel"        %% "cats"         % "0.9.0", //"0.8.1",
-  //"org.typelevel"        %% "algebra"      % "0.6.0",
-  //"org.typelevel"        %% "algebra-laws" % "0.6.0",
-  "io.dmitryivanov"      %% "scala-crdt"   % "1.0",
-  "com.lihaoyi"          %  "ammonite"     % "1.0.1" % "test" cross CrossVersion.full
-)
+      "com.github.mpilquist" %% "simulacrum"   % "0.10.0",
+      "org.typelevel"        %% "cats"         % "0.9.0", //"0.8.1",
+      //"org.typelevel"        %% "algebra"      % "0.6.0",
+      //"org.typelevel"        %% "algebra-laws" % "0.6.0",
+      "io.dmitryivanov"      %% "scala-crdt"   % "1.0",
+      "com.typesafe.akka" %%  "akka-multi-node-testkit" % akkaVersion,
+      "com.lihaoyi"          %  "ammonite"     % "1.0.1" % "test" cross CrossVersion.full),
+    // make sure that MultiJvm test are compiled by the default test compilation
+    compile in MultiJvm <<= (compile in MultiJvm) triggeredBy (compile in Test),
+    // disable parallel tests
+    parallelExecution in Test := false,
+    // make sure that MultiJvm tests are executed by the default test target,
+    // and combine the results from ordinary test and multi-jvm tests
+    executeTests in Test <<= (executeTests in Test, executeTests in MultiJvm) map {
+      case (testResults, multiNodeResults)  =>
+        val overall =
+          if (testResults.overall.id < multiNodeResults.overall.id)
+            multiNodeResults.overall
+          else
+            testResults.overall
+          Tests.Output(overall,
+            testResults.events ++ multiNodeResults.events,
+            testResults.summaries ++ multiNodeResults.summaries)
+    }
+  )
+) configs (MultiJvm)
 
 //https://tpolecat.github.io/2017/04/25/scalac-flags.html
 /*
@@ -58,6 +89,8 @@ scalacOptions ++= Seq(
 
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+
+fork in run := true
 
 //"com.rbmhtechnology" %% "eventuate-crdt"  % "0.9"
 //com.rbmhtechnology:eventuate-crdt_2.12:0.9         (depends on 2.4.12)

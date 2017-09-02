@@ -2,20 +2,21 @@ package recipes.users
 
 import akka.cluster.Cluster
 import recipes.users.crdt.{CrdtUsers, VersionedUsers}
-import akka.actor.{Actor, ActorLogging, Props}
+import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import recipes.users.UserWriter.{CreateUser, UpdateUser}
-import akka.cluster.ddata.{DistributedData, ORMap, Replicator}
+import akka.cluster.ddata.{ORMap, Replicator, ReplicatorSettings}
 import akka.cluster.ddata.Replicator.{ReadLocal, UpdateFailure, WriteLocal}
+import com.typesafe.config.ConfigFactory
 
 object ReplicatorWriter {
   sealed trait ReqCtx
   case class UserCreatedCtx(shardId: Long, user: User)
   case class UserUpdatedCtx(shardId: Long, userId: Long, login: String, active: Boolean)
 
-  def props(shardId: Long) = Props(new ReplicatorWriter(shardId))
+  def props(shardId: Long, s: ActorSystem) = Props(new ReplicatorWriter(shardId, s))
 }
 
-class ReplicatorWriter(shardId: Long) extends Actor with ActorLogging with MultiMapsPartitioner {
+class ReplicatorWriter(shardId: Long, s: ActorSystem) extends Actor with ActorLogging with MultiMapsPartitioner {
   import ReplicatorWriter._
   var version = 1
 
@@ -23,7 +24,48 @@ class ReplicatorWriter(shardId: Long) extends Actor with ActorLogging with Multi
   val rc = ReadLocal
 
   implicit val cluster = Cluster(context.system)
-  val replicator = DistributedData(context.system).replicator
+
+  //https://groups.google.com/forum/#!topic/akka-user/MO-4XhwhAN0
+  val name = s"replicator-$shardId"
+
+  val config = ConfigFactory.parseString(
+    s"""
+      | name = $name
+      | role = replicaA
+      | gossip-interval = 1 s
+      | use-dispatcher = ""
+      | notify-subscribers-interval = 500 ms
+      | max-delta-elements = 1000
+      | pruning-interval = 120 s
+      | max-pruning-dissemination = 300 s
+      | pruning-marker-time-to-live = 6 h
+      | serializer-cache-time-to-live = 10s
+      | delta-crdt {
+      |   enabled = on
+      |   max-delta-size = 1000
+      | }
+      |
+      | durable {
+      |  keys = []
+      |  pruning-marker-time-to-live = 10 d
+      |  store-actor-class = akka.cluster.ddata.LmdbDurableStore
+      |  use-dispatcher = akka.cluster.distributed-data.durable.pinned-store
+      |  pinned-store {
+      |    executor = thread-pool-executor
+      |    type = PinnedDispatcher
+      |  }
+      |
+      |  lmdb {
+      |    dir = "ddata"
+      |    map-size = 100 MiB
+      |    write-behind-interval = off
+      |  }
+      | }
+    """.stripMargin)
+
+  val settings = ReplicatorSettings(config)
+  val replicator = s.actorOf(Replicator.props(settings), name)
+  //val replicator = akka.cluster.ddata.DistributedData(context.system).replicator
 
   val key = getKey(shardId)
 

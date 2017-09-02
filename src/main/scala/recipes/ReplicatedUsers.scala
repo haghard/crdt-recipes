@@ -4,9 +4,8 @@ import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Kill, Props}
 import akka.cluster.Cluster
 import akka.cluster.ddata.Replicator._
 import com.typesafe.config.ConfigFactory
-import recipes.users.{UserWriter, UsersReader, ReplicatorWriter}
+import recipes.users.{ReplicatorWriter, UserWriter, UsersReader}
 import recipes.users.User
-
 import scala.concurrent.duration._
 
 object UsersByShardView {
@@ -22,7 +21,7 @@ class UsersByShardView(shardIds: List[Long], reader: ActorRef) extends Actor wit
         log.info("View kills itself")
         self ! Kill
       case shardId  ::  tail =>
-        reader !  shardId
+        reader ! shardId
         context become await(shardId, tail)
     }
   }
@@ -40,13 +39,12 @@ class UsersByShardView(shardIds: List[Long], reader: ActorRef) extends Actor wit
 //test:runMain recipes.ReplicatedUsers
 object ReplicatedUsers extends App {
   val systemName = "users"
-
   val commonConfig = ConfigFactory.parseString(
     s"""
       akka {
         cluster {
           # seed-nodes = [ "akka://${systemName}@127.0.0.1:2550", "akka://${systemName}@127.0.0.1:2551" ]
-
+          roles = [ "replicaA" ]
           distributed-data {
             name = replicator
             gossip-interval = 3 s
@@ -91,15 +89,15 @@ object ReplicatedUsers extends App {
   val shardIds = List[Long](2l, 7l, 16l)
 
   node1.actorOf(UserWriter.props(shardIds(0),
-    node1.actorOf(ReplicatorWriter.props(shardIds(0)), "writer-1"), writerTimeout, 0, 10
+    node1.actorOf(ReplicatorWriter.props(shardIds(0), node1), "writer-1"), writerTimeout, 0, 10
   ), s"writer-${shardIds(0)}")
 
   node2.actorOf(UserWriter.props(shardIds(1),
-    node2.actorOf(ReplicatorWriter.props(shardIds(1)), "writer-2"), writerTimeout, 0, 15
+    node2.actorOf(ReplicatorWriter.props(shardIds(1), node2), "writer-2"), writerTimeout, 0, 15
   ), s"writer-${shardIds(1)}")
 
   node3.actorOf(UserWriter.props(shardIds(2),
-    node3.actorOf(ReplicatorWriter.props(shardIds(2)), "writer-3"), writerTimeout, 0, 20
+    node3.actorOf(ReplicatorWriter.props(shardIds(2), node3), "writer-3"), writerTimeout, 0, 20
   ), s"writer-${shardIds(2)}")
 
   Helpers.wait(35.second)

@@ -16,10 +16,6 @@ class ShardReplicator(system: ActorSystem, shardName: String) extends Actor with
   //import ShardReplicator._
   val replicatorName = s"replicator-for-$shardName"
   val DataKey = PNCounterKey(shardName + "-counter")
-
-  //import context.dispatcher
-  //val tickTask = context.system.scheduler.schedule(interval, interval, self, Tick)
-
   implicit val cluster = Cluster(system)
 
   val config = ConfigFactory.parseString(

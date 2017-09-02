@@ -7,37 +7,36 @@ import recipes.shardedReplica.ShardWriter.Command
 import scala.concurrent.duration.FiniteDuration
 
 object ShardWriter {
-  object Tick
-  case class Command(i : Int)
 
-  def props(system: ActorSystem,/* reps: Map[String, ActorRef],*/
-    shards: Vector[String],
-    interval: FiniteDuration, startWith: Int) =
+  object Tick
+
+  case class Command(i: Int)
+
+  def props(system: ActorSystem, shards: Vector[String], interval: FiniteDuration, startWith: Int) =
     Props(new ShardWriter(system, shards, interval, startWith))
 }
 
-class ShardWriter(system: ActorSystem,   /*reps: Map[String, ActorRef],*/
-  shards: Vector[String],
-  interval: FiniteDuration, startWith: Int) extends Actor with ActorLogging {
-  import ShardWriter._
+class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteDuration,
+  startWith: Int) extends Actor with ActorLogging {
 
+  import ShardWriter._
   import system.dispatcher
+
   system.scheduler.schedule(interval, interval, self, Tick)
 
   val numberOfShards = shards.size
 
-  def create(role: String/*, replicator: ActorRef*/) = {
+  def create(role: String) = {
 
-    val EntityId: ShardRegion.ExtractEntityId = {
-      case msg@Command(id) ⇒ ((id % numberOfShards).toString, msg)
+    def EntityId: ShardRegion.ExtractEntityId = {
+      case msg @ Command(id) ⇒ ((id % numberOfShards).toString, msg)
     }
 
-    val ShardId: ShardRegion.ExtractShardId = {
+    def ShardId: ShardRegion.ExtractShardId = {
       case Command(id) ⇒ (id % numberOfShards).toString
     }
 
     val replicator = system.actorOf(ShardReplicator.props(system, role), role)
-    //val b1 = node1.actorOf(ShardReplicator.props(node1, shards(1)), shards(1))
 
     //cluster sharding gives you one actor per entity,
     (role, ClusterSharding(system).start(
@@ -53,16 +52,12 @@ class ShardWriter(system: ActorSystem,   /*reps: Map[String, ActorRef],*/
   val actors = shards0.map(_._2)
   val roles = shards0.map(_._1)
 
-  val routes =  actors.zipWithIndex.foldLeft(Map.empty[Int, ActorRef]) { (acc, c) =>
+  val routes = actors.zipWithIndex.foldLeft(Map.empty[Int, ActorRef]) { (acc, c) =>
     acc + (c._2 -> c._1)
   }
 
-  //val routes = Map(0 -> actors(0), 1 -> actors(1))
-
   var i = startWith
   var cursor = 0
-
-  //val regions = reps.keySet.map(role => ClusterSharding(system).shardRegion(s"shard-region-to-${role}"))
 
   override def receive = active(0)
 
@@ -74,7 +69,7 @@ class ShardWriter(system: ActorSystem,   /*reps: Map[String, ActorRef],*/
       log.info("writer pick {} for message {}", role, i)
       shardRegion ! Command(i)
       i = i + 1
-      if(i % numberOfShards == 0)
+      if (i % numberOfShards == 0)
         context.become(active(index + 1))
   }
 }
@@ -91,6 +86,7 @@ object ReplicatorEntity {
   def props(replicator: ActorRef) = Props(new ReplicatorEntity(replicator))
 }
 
+//Each replicators role ("shard-A", "shard-B") corresponds to one ShardEntity
 class ReplicatorEntity(replicator: ActorRef) extends Actor with ActorLogging {
   override def preStart = {
     log.info("Allocate ReplicatorEntity for {}", replicator)

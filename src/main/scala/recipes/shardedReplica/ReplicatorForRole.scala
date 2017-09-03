@@ -5,15 +5,14 @@ import akka.cluster.Cluster
 import akka.cluster.ddata.Replicator._
 import akka.cluster.ddata.{PNCounter, PNCounterKey, Replicator, ReplicatorSettings}
 import com.typesafe.config.ConfigFactory
-import recipes.shardedReplica.ShardWriter.Command
+import recipes.shardedReplica.sharding.ShardWriter.Command
 
-object ShardReplicator {
+object ReplicatorForRole {
   def props(system: ActorSystem, shardName: String) =
-    Props(new ShardReplicator(system, shardName))
+    Props(new ReplicatorForRole(system, shardName))
 }
 
-class ShardReplicator(system: ActorSystem, shardName: String) extends Actor with ActorLogging {
-  //import ShardReplicator._
+class ReplicatorForRole(system: ActorSystem, shardName: String) extends Actor with ActorLogging {
   val replicatorName = s"replicator-for-$shardName"
   val DataKey = PNCounterKey(shardName + "-counter")
   implicit val cluster = Cluster(system)
@@ -62,7 +61,7 @@ class ShardReplicator(system: ActorSystem, shardName: String) extends Actor with
 
   ///*WriteMajority(2.second)*/
   override def receive = {
-    case c: Command =>
+    case Command =>
       replicator ! Update(DataKey, PNCounter(), WriteLocal)(_ + 1)
     case c @ Changed(DataKey) =>
       val data = c.get(DataKey)

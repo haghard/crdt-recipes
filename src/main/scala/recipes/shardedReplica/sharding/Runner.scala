@@ -1,18 +1,18 @@
-package recipes.shardedReplica
+package recipes.shardedReplica.sharding
 
 import akka.actor.ActorSystem
 import akka.cluster.Cluster
 import com.typesafe.config.ConfigFactory
 import recipes.Helpers
+
 import scala.concurrent.duration._
 
-
-//runMain recipes.shardedReplica.ShardingWithReplicas
+//runMain recipes.shardedReplica.sharding.Runner
 
 /*
 
 POC of this approach
-  https://groups.google.com/forum/#!topic/akka-user/MO-4XhwhAN0
+  https://groups.google.com/forum/#!topic/akka-user/MO-4XhwhAN0 with sharding
 
   You can use Cluster Sharding and DData with roles. So, let's say that you go with 10 roles, 10,000 entities in each role.
   You would then start Replicators on the nodes with corresponding roles.
@@ -52,7 +52,7 @@ POC of this approach
 
   Yes they can read instead, but then you would need to know when to read. Perhaps you do that for each request, that would also work.
 */
-object ShardingWithReplicas extends App {
+object Runner extends App {
   val systemName = "counts"
 
   //We have 2 shards on each node and we replicate each shard 3 times
@@ -72,6 +72,10 @@ object ShardingWithReplicas extends App {
       """
   )
 
+  //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBColumnFamilySample.java
+  //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBSample.java
+  //org.rocksdb.RocksDB.loadLibrary()
+
   def portConfig(port: Int) = ConfigFactory.parseString(s"akka.remote.artery.canonical.port = $port")
 
   val node1 = ActorSystem(systemName, portConfig(2550).withFallback(commonConfig))
@@ -86,10 +90,6 @@ object ShardingWithReplicas extends App {
   //val node3Cluster = Cluster(node3)
   //val node4Cluster = Cluster(client)
 
-  //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBColumnFamilySample.java
-  //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBSample.java
-  //org.rocksdb.RocksDB.loadLibrary()
-
   node1Cluster.join(node1Cluster.selfAddress)
   node2Cluster.join(node1Cluster.selfAddress)
   //node3Cluster.join(node1Cluster.selfAddress)
@@ -97,50 +97,34 @@ object ShardingWithReplicas extends App {
 
   Helpers.waitForAllNodesUp(node1, node2)
 
-  //val a1 = node1.actorOf(ShardReplicator.props(node1, shards(0)), shards(0))
-  //val b1 = node1.actorOf(ShardReplicator.props(node1, shards(1)), shards(1))
-  node1.actorOf(ShardWriter.props(node1, shards, 2.seconds, 0))
+ /*
+ Allocation
+ [akka://counts@127.0.0.1:2550/system/sharding/shard-region-to-shard-A/shard-A/0] Allocate ReplicatorEntity
+ [akka://counts@127.0.0.1:2550/system/sharding/shard-region-to-shard-B/shard-A/0] Allocate ReplicatorEntity
+ [akka://counts@127.0.0.1:2551/system/sharding/shard-region-to-shard-A/shard-B/1] Allocate ReplicatorEntity
+ [akka://counts@127.0.0.1:2551/system/sharding/shard-region-to-shard-B/shard-B/1] Allocate ReplicatorEntity
+
+ Distribution
+ [akka://counts@127.0.0.1:2550/system/sharding/shard-region-to-shard-A/shard-A/0] 0,20,12,16,104,8,4,100
+ [akka://counts@127.0.0.1:2550/system/sharding/shard-region-to-shard-B/shard-A/0] 10,14,106,6,102,2,22,18
+ [akka://counts@127.0.0.1:2551/system/sharding/shard-region-to-shard-A/shard-B/1] 101,5,1,21,9,13,105,17
+ [akka://counts@127.0.0.1:2551/system/sharding/shard-region-to-shard-B/shard-B/1] 7,103,3,11,23,19,107,15
+ */
 
   //val a2 = node2.actorOf(ShardReplicator.props(node2, shards(0)), shards(0))
   //val b2 = node2.actorOf(ShardReplicator.props(node2, shards(1)), shards(1))
+  node1.actorOf(ShardWriter.props(node1, shards, 2.seconds, 0))
+
+  //val a3 = node3.actorOf(ShardReplicator.props(node3, shards(0), 6.seconds), shards(0))
+  //val b3 = node3.actorOf(ShardReplicator.props(node3, shards(1), 5.seconds), shards(1))
   node2.actorOf(ShardWriter.props(node2, shards, 6.seconds, 100))
 
-  /*
-  val a3 = node3.actorOf(ShardReplicator.props(node3, shards(0), 6.seconds), shards(0))
-  val b3 = node3.actorOf(ShardReplicator.props(node3, shards(1), 5.seconds), shards(1))
-  */
 
   Helpers.wait(50.second)
-  //node4Cluster.leave(node4Cluster.selfAddress)
-  //node4.terminate
 
   node1Cluster.leave(node1Cluster.selfAddress)
   node1.terminate
 
   node2Cluster.leave(node2Cluster.selfAddress)
   node2.terminate
-
-  //node3Cluster.leave(node3Cluster.selfAddress)
-  //node3.terminate
 }
-
-/*
-  val shardAGroup = node1.actorOf(
-    ClusterRouterGroup(
-      ConsistentHashingGroup(List("/user/shardA/replicaA1", "user/shardA/replicaA2", "/user/shardA/replicaA3")),
-        ClusterRouterGroupSettings(
-          totalInstances = 3,
-          routeesPaths = immutable.Seq[String]("/user/shardA"),
-          allowLocalRoutees = false,
-          useRole = Some("shardA"))
-    ).props(), "shardA-replicas")
-
-  val shardAPool =
-    ClusterRouterPool(
-      ConsistentHashingPool(nrOfInstances = 3, virtualNodesFactor = 10
-        hashMapping = hashMapping, supervisorStrategy = clusteredRouterSupervisorStrategy
-      ),
-      ClusterRouterPoolSettings(totalInstances = 10, maxInstancesPerNode = 1,
-        allowLocalRoutees = true, useRole = Some("shardA"))
-    )
-*/

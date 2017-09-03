@@ -1,8 +1,9 @@
-package recipes.shardedReplica
+package recipes.shardedReplica.sharding
 
 import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props}
 import akka.cluster.sharding.{ClusterSharding, ClusterShardingSettings, ShardRegion}
-import recipes.shardedReplica.ShardWriter.Command
+import recipes.shardedReplica.ReplicatorForRole
+import recipes.shardedReplica.sharding.ShardWriter.Command
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -38,7 +39,7 @@ class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteD
 
     //ShardCoordinator.LeastShardAllocationStrategy
 
-    val replicator = system.actorOf(ShardReplicator.props(system, role), role)
+    val replicator = system.actorOf(ReplicatorForRole.props(system, role), role)
 
     //cluster sharding gives you one actor per entity,
     (role, ClusterSharding(system).start(
@@ -91,11 +92,16 @@ object ReplicatorEntity {
 //Each replicators role ("shard-A", "shard-B") corresponds to one ShardEntity
 class ReplicatorEntity(replicator: ActorRef) extends Actor with ActorLogging {
   override def preStart = {
-    log.info("Allocate ReplicatorEntity for {}", replicator)
+    log.info("Allocate ReplicatorEntity")
   }
 
+  //track local history
+  var ids = Set.empty[Int]
+
   override def receive = {
-    case msg: Command ⇒
-      replicator forward msg
+    case cmd: Command =>
+      ids += cmd.i
+      log.info(ids.mkString(","))
+      replicator forward cmd
   }
 }

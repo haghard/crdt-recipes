@@ -6,14 +6,12 @@ import com.typesafe.config.ConfigFactory
 import recipes.Helpers
 import scala.concurrent.duration._
 
-/*
-http://doc.akka.io/docs/akka/current/scala/distributed-data.html?_ga=2.80267922.460892423.1504344417-1678957595.1434051367
 
-runMain recipes.shardedReplica.ShardingWithReplicas
-*/
+//runMain recipes.shardedReplica.ShardingWithReplicas
 
 /*
 
+POC of this approach
   https://groups.google.com/forum/#!topic/akka-user/MO-4XhwhAN0
 
   You can use Cluster Sharding and DData with roles. So, let's say that you go with 10 roles, 10,000 entities in each role.
@@ -87,6 +85,10 @@ object ShardingWithReplicas extends App {
   val node2Cluster = Cluster(node2)
   //val node3Cluster = Cluster(node3)
   //val node4Cluster = Cluster(client)
+
+  //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBColumnFamilySample.java
+  //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBSample.java
+  //org.rocksdb.RocksDB.loadLibrary()
 
   node1Cluster.join(node1Cluster.selfAddress)
   node2Cluster.join(node1Cluster.selfAddress)

@@ -16,8 +16,7 @@ object ShardWriter {
     Props(new ShardWriter(system, shards, interval, startWith))
 }
 
-class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteDuration,
-  startWith: Int) extends Actor with ActorLogging {
+class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteDuration, startWith: Int) extends Actor with ActorLogging {
 
   import ShardWriter._
   import system.dispatcher
@@ -33,8 +32,11 @@ class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteD
     }
 
     def ShardId: ShardRegion.ExtractShardId = {
-      case Command(id) ⇒ (id % numberOfShards).toString
+      case Command(id) ⇒ shards(id % numberOfShards)
+      case ShardRegion.StartEntity(id) => shards(id.hashCode % numberOfShards)
     }
+
+    //ShardCoordinator.LeastShardAllocationStrategy
 
     val replicator = system.actorOf(ShardReplicator.props(system, role), role)
 
@@ -42,13 +44,13 @@ class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteD
     (role, ClusterSharding(system).start(
       typeName = s"shard-region-to-$role",
       entityProps = ReplicatorEntity.props(replicator),
-      settings = ClusterShardingSettings(system).withRole(role),
+      settings = ClusterShardingSettings(system).withRole(role).withRememberEntities(true),
       extractEntityId = EntityId,
       extractShardId = ShardId
     ))
   }
 
-  val shards0 = shards.map { shardName => create(shardName) }
+  val shards0 = shards.map(create(_))
   val actors = shards0.map(_._2)
   val roles = shards0.map(_._1)
 

@@ -31,6 +31,7 @@ val project = Project(
 
       "com.github.mpilquist" %% "simulacrum"   % "0.10.0",
       "org.typelevel"        %% "cats"         % "0.9.0", //"0.8.1",
+      //"org.typelevel"        %% "cats-core"    % "1.0.0-MF",
       "org.rocksdb"          %  "rocksdbjni"   % "5.5.1",
       //"org.typelevel"        %% "algebra"      % "0.6.0",
       //"org.typelevel"        %% "algebra-laws" % "0.6.0",

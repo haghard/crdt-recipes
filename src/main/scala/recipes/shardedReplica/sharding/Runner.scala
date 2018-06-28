@@ -10,7 +10,6 @@ import scala.concurrent.duration._
 //runMain recipes.shardedReplica.sharding.Runner
 
 /*
-
 POC of this approach
   https://groups.google.com/forum/#!topic/akka-user/MO-4XhwhAN0 with sharding
 
@@ -48,10 +47,14 @@ POC of this approach
 
   Yes
 
-  3. In the last scenario --- one consistent hashing group router per role --- why do routees subscribe to changes from DData? Shouldn't DData be replicated across all nodes with role_i? If so, they can simply read the data if they are on the node with the right role.
+  3. In the last scenario --- one consistent hashing group router per role --- why do routees subscribe to changes from DData?
+  Shouldn't DData be replicated across all nodes with role_i?
+  If so, they can simply read the data if they are on the node with the right role.
 
   Yes they can read instead, but then you would need to know when to read. Perhaps you do that for each request, that would also work.
 */
+
+//Sharded replication with distributed data
 object Runner extends App {
   val systemName = "counts"
 
@@ -64,6 +67,7 @@ object Runner extends App {
           cluster {
             roles = [ ${shards(0)}, ${shards(1)} ]
             jmx.multi-mbeans-in-same-jvm = on
+            #sharding.state-store-mode = persistence
           }
           actor.provider = cluster
           remote.artery.enabled = true

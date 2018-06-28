@@ -3,11 +3,13 @@ package recipes.users
 import akka.cluster.ddata.{Key, ORMap, ReplicatedData}
 import recipes.users.crdt.{CrdtUsers, VersionedUsers}
 
-case class User(id: Long, login: String, active: Boolean)
+case class Node(host: String, port: Int)
+case class User(id: String, login: String, createdAt: Node, active: Boolean = false, online: Boolean = false)
 
 //object UsersKey extends Key[ORMap[String, VersionedUsers]]("users-by-shard")
+object UsersKey extends Key[VersionedUsers]("users")
 
-//One bucket may contain several
+//One bucket contains one ORMap
 case class UsersBucket(bucketNumber: Int) extends Key[ORMap[String, CrdtUsers]](bucketNumber.toString)
 
 case class VersionedUsersBucket(bucketNumber: Int) extends Key[VersionedUsers](bucketNumber.toString)
@@ -19,7 +21,7 @@ trait Partitioner[+T <: ReplicatedData] {
   protected val maxNumber = 30l
   protected val buckets = Array(5l, 10l, 15l, 20l, 25, maxNumber)
 
-  def getKey(key: Long): ReplicatedKey
+  def getBucket(key: Long): ReplicatedKey
 }
 
 /**
@@ -31,7 +33,7 @@ trait Partitioner[+T <: ReplicatedData] {
  */
 trait MultiMapsPartitioner extends Partitioner[ORMap[String, CrdtUsers]] {
   override type ReplicatedKey = UsersBucket
-  override def getKey(key: Long) = {
+  override def getBucket(key: Long) = {
     import scala.collection.Searching._
     val index = math.abs(key % maxNumber)
     UsersBucket(buckets.search(index).insertionPoint)
@@ -40,10 +42,9 @@ trait MultiMapsPartitioner extends Partitioner[ORMap[String, CrdtUsers]] {
 
 
 trait VersionVectorPartitioner extends Partitioner[VersionedUsers] {
-  override type ReplicatedKey = VersionedUsersBucket
-  override def getKey(key: Long) = {
-    import scala.collection.Searching._
-    val index = math.abs(key % maxNumber)
-    VersionedUsersBucket(buckets.search(index).insertionPoint)
+  override type ReplicatedKey = UsersKey.type /*VersionedUsersBucket*/
+  override def getBucket(key: Long) = {
+    UsersKey
+    //VersionedUsersBucket(key.toInt)
   }
 }

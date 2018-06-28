@@ -1,3 +1,4 @@
+/*
 package recipes.users.crdt
 
 object GCounterExample {
@@ -107,6 +108,7 @@ object Example {
 
   crdt1.increment("a", 20).merge(crdt2).total
 }
+*/
 
 
 

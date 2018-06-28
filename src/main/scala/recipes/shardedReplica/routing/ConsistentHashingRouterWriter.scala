@@ -23,21 +23,21 @@ class ConsistentHashingRouterWriter(system: ActorSystem, shards: Vector[String],
   import system.dispatcher
   system.scheduler.schedule(interval, interval, self, Tick)
 
-  def create(role: String) = {
-
+  def create(shard: String) = {
+    //routee
     context.system.actorOf(RouteeReplicator.props(
-      system.actorOf(ReplicatorForRole.props(system, role), role)
-    ), name = s"routeeReplicator-$role")
+      system.actorOf(ReplicatorForRole.props(system, shard), shard)
+    ), name = s"routee-replicator-$shard")
 
     val shardRouter = system.actorOf(
       ClusterRouterGroup(
         ConsistentHashingGroup(Nil),
         ClusterRouterGroupSettings(
-          totalInstances = 2,
-          routeesPaths = List(s"/user/routeeReplicator-$role"),
+          totalInstances = shards.size,
+          routeesPaths = List(s"/user/routee-replicator-$shard"),
           allowLocalRoutees = true,
-          useRole = Some(role))
-      ).props(), name = s"shard-router-$role")
+          useRoles = shard)
+      ).props(), name = s"shard-router-$shard")
 
     shardRouter
   }
@@ -49,9 +49,9 @@ class ConsistentHashingRouterWriter(system: ActorSystem, shards: Vector[String],
   def active(index: Int): Receive = {
     case Tick =>
       val ind = index % numberOfShards
-      val role = shards(ind)
+      val shard = shards(ind)
       val router = routers(ind)
-      log.info("writer pick router {} for message {}", role, i)
+      log.info("writer pick shard {} for message {}", shard, i)
       router ! ConsistentHashableEnvelope(Command(i), i)
       i = i + 1
       if (i % numberOfShards == 0)
@@ -65,11 +65,11 @@ object RouteeReplicator {
 }
 
 /*
-[akka://counts@127.0.0.1:2550/user/routeeReplicator-shard-A] 20,21,13,105,100
-[akka://counts@127.0.0.1:2551/user/routeeReplicator-shard-A] 101,0,5,1,9,17,12,16,104,8,4
+[akka://counts@127.0.0.1:2550/user/routee-replicator-shard-A] 20,21,13,105,100
+[akka://counts@127.0.0.1:2551/user/routee-replicator-shard-A] 101,0,5,1,9,17,12,16,104,8,4
 
-[akka://counts@127.0.0.1:2550/user/routeeReplicator-shard-B] 106,2,22,103,18,11,19,107,15
-[akka://counts@127.0.0.1:2551/user/routeeReplicator-shard-B] 10,14,6,102,7,3,23
+[akka://counts@127.0.0.1:2550/user/routee-replicator-shard-B] 106,2,22,103,18,11,19,107,15
+[akka://counts@127.0.0.1:2551/user/routee-replicator-shard-B] 10,14,6,102,7,3,23
  */
 class RouteeReplicator(replicator: ActorRef) extends Actor with ActorLogging {
   override def preStart =

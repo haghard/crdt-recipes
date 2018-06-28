@@ -1,7 +1,7 @@
 package recipes.users.crdt
 
 import scala.language.higherKinds
-import cats.Monoid
+import cats.{Foldable, Monoid}
 import cats.syntax.semigroup._
 import cats.syntax.foldable._
 
@@ -62,12 +62,15 @@ object GCounter {
   implicit def mapGCounter[K, V]: GCounter[Map, K, V] =
     new GCounter[Map, K, V] {
       import cats.instances.map._
+      import cats.instances.list._
 
       def increment(fa: Map[K, V])(k: K, v: V)(implicit m: Monoid[V]): Map[K, V] =
         fa + (k -> (fa.getOrElse(k, m.empty) |+| v))
 
-      def get(f: Map[K, V])(implicit m: Monoid[V]): V =
-        f.foldMap(identity)
+      def get(f: Map[K, V])(implicit m: Monoid[V]): V = {
+        Foldable[List].fold(f.values.toList)(m)
+        //f.foldMap(identity)
+      }
 
       def merge(f1: Map[K, V], f2: Map[K, V])(implicit b: BoundedSemiLattice[V]): Map[K, V] =
         f1 |+| f2

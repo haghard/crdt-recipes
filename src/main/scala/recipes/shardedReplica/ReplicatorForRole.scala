@@ -12,15 +12,16 @@ object ReplicatorForRole {
     Props(new ReplicatorForRole(system, shardName))
 }
 
-class ReplicatorForRole(system: ActorSystem, shardName: String) extends Actor with ActorLogging {
-  val replicatorName = s"replicator-for-$shardName"
-  val DataKey = PNCounterKey(shardName + "-counter")
+class ReplicatorForRole(system: ActorSystem, shard: String) extends Actor with ActorLogging {
+  val replicatorName = s"replicator-for-$shard"
+  val DataKey = PNCounterKey(shard + "-counter")
+
   implicit val cluster = Cluster(system)
 
   val config = ConfigFactory.parseString(
     s"""
        | name = $replicatorName
-       | role = $shardName
+       | role = $shard
        | gossip-interval = 1 s
        | use-dispatcher = ""
        | notify-subscribers-interval = 500 ms
@@ -35,7 +36,7 @@ class ReplicatorForRole(system: ActorSystem, shardName: String) extends Actor wi
        | }
        |
        | durable {
-       |  keys = []
+       |  keys = ["*"]
        |  pruning-marker-time-to-live = 10 d
        |  store-actor-class = akka.cluster.ddata.LmdbDurableStore
        |  use-dispatcher = akka.cluster.distributed-data.durable.pinned-store
@@ -65,6 +66,6 @@ class ReplicatorForRole(system: ActorSystem, shardName: String) extends Actor wi
       replicator ! Update(DataKey, PNCounter(), WriteLocal)(_ + 1)
     case c @ Changed(DataKey) =>
       val data = c.get(DataKey)
-      log.info(s"Gossip change - Shard: {} - Current count:{}", shardName, data.getValue)
+      log.info(s"Gossip change - Shard: {} - Current count:{}", shard, data.getValue)
   }
 }

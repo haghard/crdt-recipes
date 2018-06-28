@@ -15,17 +15,19 @@ POC of this approach
 runMain recipes.shardedReplica.routing.Runner
 
 */
+
+//Sharded replication with distributed data using router group
 object Runner extends App {
   val systemName = "counts"
 
-  //We have 2 shards on each node and we replicate each shard 3 times
-  val shards = Vector("shard-A", "shard-B")
+  //We have 2 shards on each node and we replicate each message
+  val shards = Vector("shard-A", "shard-B", "shard-C")
 
   val commonConfig = ConfigFactory.parseString(
     s"""
        akka {
           cluster {
-            roles = [ ${shards(0)}, ${shards(1)} ]
+            roles = [ ${shards(0)}, ${shards(1)}, ${shards(2)} ]
             jmx.multi-mbeans-in-same-jvm = on
           }
           actor.provider = cluster
@@ -39,17 +41,21 @@ object Runner extends App {
 
   val node1 = ActorSystem(systemName, portConfig(2550).withFallback(commonConfig))
   val node2 = ActorSystem(systemName, portConfig(2551).withFallback(commonConfig))
+  val node3 = ActorSystem(systemName, portConfig(2552).withFallback(commonConfig))
 
   val node1Cluster = Cluster(node1)
   val node2Cluster = Cluster(node2)
+  val node3Cluster = Cluster(node3)
 
   node1Cluster.join(node1Cluster.selfAddress)
   node2Cluster.join(node1Cluster.selfAddress)
+  node3Cluster.join(node1Cluster.selfAddress)
 
-  Helpers.waitForAllNodesUp(node1, node2)
+  Helpers.waitForAllNodesUp(node1, node2, node3)
 
   node1.actorOf(ConsistentHashingRouterWriter.props(node1, shards, 2.seconds, 0))
   node2.actorOf(ConsistentHashingRouterWriter.props(node2, shards, 6.seconds, 100))
+  node3.actorOf(ConsistentHashingRouterWriter.props(node3, shards, 4.seconds, 1000))
 
   Helpers.wait(50.second)
 
@@ -58,6 +64,9 @@ object Runner extends App {
 
   node2Cluster.leave(node2Cluster.selfAddress)
   node2.terminate
+
+  node3Cluster.leave(node3Cluster.selfAddress)
+  node3.terminate
 
   /*
   Allocation

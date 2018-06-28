@@ -1,9 +1,5 @@
 package recipes.users.crdt
 
-import cats.Order
-import cats.Order._
-import cats.implicits._
-
 import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
 
@@ -26,7 +22,8 @@ object VersionVector {
     */
   private case object FullOrder extends Ordering
 
-  def empty[A](implicit ord: cats.Order[A]) = VersionVector[A](SortedMap.empty[A, Long])
+  def empty[A](implicit ord : scala.Ordering[A]) =
+    VersionVector[A](SortedMap.empty[A, Long](ord))
 }
 
 trait VersionVectorLike[T] {
@@ -79,16 +76,19 @@ trait VersionVectorLike[T] {
   protected def size: Int
 }
 
-case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVectorLike[T] with Serializable {
-
+// Taken from "Merlijn Boogerd" %%  "computational-crdts" % "1.0"
+case class VersionVector[T: scala.Ordering](elems: SortedMap[T, Long]) extends VersionVectorLike[T] with Serializable {
   import VersionVector._
 
   override type VV = VersionVector[T]
 
+  private val ord = implicitly[scala.Ordering[T]]
+
   /**
     * Increment the version for the node passed as argument. Returns a new VersionVector.
     */
-  override protected def increment(node: T): VersionVector[T] = VersionVector(elems.updated(node, nodeClock(node) + 1))
+  override protected def increment(node: T): VersionVector[T] =
+    VersionVector(elems.updated(node, nodeClock(node) + 1))
 
   /**
     * Returns the local view on the logical clock of the given node.
@@ -136,7 +136,7 @@ case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVec
       (i1, i2) match {
         case (h1 +: t1, h2 +: t2) =>
           // compare the nodes
-          val nc = h1._1 compare h2._1
+          val nc = ord.compare(h1._1, h2._1)
           if (nc == 0) {
             // both nodes exist compare the timestamps
             // same timestamp so just continue with the next nodes
@@ -181,32 +181,31 @@ case class VersionVector[T: Order](elems: SortedMap[T, Long]) extends VersionVec
     * Computes the union of the nodes and maintains the highest clock value found for each
     */
   override def merge(that: VersionVector[T]): VersionVector[T] = {
-    def iterate(s1: SortedMap[T, Long], s2: SortedMap[T, Long], acc: SortedMap[T, Long]): SortedMap[T, Long] = {
+
+    def go(s1: SortedMap[T, Long], s2: SortedMap[T, Long], acc: SortedMap[T, Long]): SortedMap[T, Long] = {
       if (s1.nonEmpty && s2.nonEmpty) {
         val (t1, c1) = s1.head
         val (t2, c2) = s2.head
-        val sOrder = t1 compare t2
+        val r = ord.compare(t1, t2)
 
-        if (sOrder == 0) {
+        if (r == 0) {
           // This elements exists only in both maps, take the maximum logical clock value
           val newAcc = acc.updated(t1, math.max(c1, c2))
-          iterate(s1.tail, s2.tail, newAcc)
-        } else if (sOrder < 0) {
+          go(s1.tail, s2.tail, newAcc)
+        } else if (r < 0) {
           // This element exists only in c1
           val newAcc = acc.updated(t1, c1)
-          iterate(s1.tail, s2, newAcc)
+          go(s1.tail, s2, newAcc)
         } else {
           // This element exists only in c2
           val newAcc = acc.updated(t2, c2)
-          iterate(s1, s2.tail, newAcc)
+          go(s1, s2.tail, newAcc)
         }
-      } else if (s1.isEmpty)
-        acc ++ s2
-      else
-        acc ++ s1
+      } else if (s1.isEmpty) acc ++ s2
+        else acc ++ s1
     }
 
-    val newEntries = iterate(this.elems, that.elems, SortedMap.empty[T, Long])
+    val newEntries = go(this.elems, that.elems, SortedMap.empty[T, Long])
     VersionVector(newEntries)
   }
 

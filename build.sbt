@@ -1,7 +1,7 @@
 import com.typesafe.sbt.SbtMultiJvm
 import com.typesafe.sbt.SbtMultiJvm.MultiJvmKeys.MultiJvm
 
-val akkaVersion = "2.5.4"
+val akkaVersion = "2.5.13"
 
 /*resolvers ++= Seq(
   "maven central"   at "http://repo.maven.apache.org/maven2",
@@ -14,30 +14,33 @@ val project = Project(
   settings = Defaults.coreDefaultSettings ++ SbtMultiJvm.multiJvmSettings ++ Seq(
     name := "crdt-recipes",
     version := "1.0.0",
-    scalaVersion := "2.12.3",
+    scalaVersion := "2.12.4",
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor" % akkaVersion,
       "com.typesafe.akka" %% "akka-cluster" % akkaVersion,
-      //"com.typesafe.akka" %% "akka-cluster-tools" % akkaVersion,
+
       "com.typesafe.akka" %%  "akka-cluster-sharding" % akkaVersion,
       "com.typesafe.akka" %% "akka-distributed-data" % akkaVersion,
-      "com.typesafe.akka" %% "akka-http" % "10.0.9",
-      "com.typesafe.akka" %% "akka-http-testkit" % "10.0.9",
-      "com.typesafe.akka" %% "akka-typed" % akkaVersion,
-      "eu.timepit"        %% "crjdt-core" % "0.0.7",
-      "com.twitter"       %% "algebird-core" % "0.13.0",
+      //"com.typesafe.akka" %% "akka-http" % "10.1.0",
+      //"com.typesafe.akka" %% "akka-http-testkit" % "10.0.11",
+      
+      "eu.timepit"        %% "crjdt-core" % "0.0.8-SNAPSHOT", //local build
+      //"com.twitter"       %% "algebird-core" % "0.13.0",
+      
       "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.3",
 
       "com.github.mpilquist" %% "simulacrum"   % "0.10.0",
-      "org.typelevel"        %% "cats"         % "0.9.0", //"0.8.1",
-      //"org.typelevel"        %% "cats-core"    % "1.0.0-MF",
+      
+      //"org.typelevel"        %% "cats-core"         % "0.9.0",
+
       "org.rocksdb"          %  "rocksdbjni"   % "5.5.1",
-      //"org.typelevel"        %% "algebra"      % "0.6.0",
-      //"org.typelevel"        %% "algebra-laws" % "0.6.0",
-      "io.dmitryivanov"      %% "scala-crdt"   % "1.0",
+      "io.dmitryivanov"      %% "scala-crdt"   % "1.0.1",
+
+      "Merlijn Boogerd" %%  "computational-crdts" % "1.0",
+
       "com.typesafe.akka" %%  "akka-multi-node-testkit" % akkaVersion,
-      "com.lihaoyi"          %  "ammonite"     % "1.0.1" % "test" cross CrossVersion.full),
+      "com.lihaoyi"          %  "ammonite"     % "1.0.3" % "test" cross CrossVersion.full),
     // make sure that MultiJvm test are compiled by the default test compilation
     compile in MultiJvm <<= (compile in MultiJvm) triggeredBy (compile in Test),
     // disable parallel tests

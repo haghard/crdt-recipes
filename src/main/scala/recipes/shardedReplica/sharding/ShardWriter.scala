@@ -17,7 +17,8 @@ object ShardWriter {
     Props(new ShardWriter(system, shards, interval, startWith))
 }
 
-class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteDuration, startWith: Int) extends Actor with ActorLogging {
+class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteDuration, startWith: Int)
+  extends Actor with ActorLogging {
 
   import ShardWriter._
   import system.dispatcher
@@ -28,11 +29,11 @@ class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteD
 
   def create(role: String) = {
 
-    def EntityId: ShardRegion.ExtractEntityId = {
+    def entityId: ShardRegion.ExtractEntityId = {
       case msg @ Command(id) ⇒ ((id % numberOfShards).toString, msg)
     }
 
-    def ShardId: ShardRegion.ExtractShardId = {
+    def shardId: ShardRegion.ExtractShardId = {
       case Command(id) ⇒ shards(id % numberOfShards)
       case ShardRegion.StartEntity(id) => shards(id.hashCode % numberOfShards)
     }
@@ -41,21 +42,21 @@ class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteD
 
     val replicator = system.actorOf(ReplicatorForRole.props(system, role), role)
 
-    //cluster sharding gives you one actor per entity,
+    //cluster-sharding gives you one actor per entity
     (role, ClusterSharding(system).start(
       typeName = s"shard-region-to-$role",
       entityProps = ReplicatorEntity.props(replicator),
       settings = ClusterShardingSettings(system).withRole(role).withRememberEntities(true),
-      extractEntityId = EntityId,
-      extractShardId = ShardId
+      extractEntityId = entityId,
+      extractShardId = shardId
     ))
   }
 
   val shards0 = shards.map(create(_))
-  val actors = shards0.map(_._2)
+  val shardRegions = shards0.map(_._2)
   val roles = shards0.map(_._1)
 
-  val routes = actors.zipWithIndex.foldLeft(Map.empty[Int, ActorRef]) { (acc, c) =>
+  val routes = shardRegions.zipWithIndex.foldLeft(Map.empty[Int, ActorRef]) { (acc, c) =>
     acc + (c._2 -> c._1)
   }
 
@@ -66,10 +67,10 @@ class ShardWriter(system: ActorSystem, shards: Vector[String], interval: FiniteD
 
   def active(index: Int): Receive = {
     case Tick =>
-      val ind = index % roles.size
-      val role = roles(ind)
-      val shardRegion = routes(ind)
-      log.info("writer pick {} for message {}", role, i)
+      val seqNumber = index % roles.size
+      val shard = roles(seqNumber)
+      val shardRegion = routes(seqNumber)
+      log.info("writer pick {} for message {}", shard, i)
       shardRegion ! Command(i)
       i = i + 1
       if (i % numberOfShards == 0)

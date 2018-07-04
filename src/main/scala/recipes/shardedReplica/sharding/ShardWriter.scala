@@ -13,12 +13,12 @@ object ShardWriter {
 
   case class Command(i: Int)
 
-  def props(system: ActorSystem, hostedShard: String, proxyShard: String,
+  def props(system: ActorSystem, hostedShard: String, proxyShard: List[String],
     interval: FiniteDuration, startWith: Int) =
     Props(new ShardWriter(system, hostedShard, proxyShard, interval, startWith))
 }
 
-class ShardWriter(system: ActorSystem, hostedShards: String, proxyShard: String,
+class ShardWriter(system: ActorSystem, hostedShards: String, proxyShard: List[String],
   interval: FiniteDuration, startWith: Int) extends Actor with ActorLogging {
 
   import ShardWriter._
@@ -80,7 +80,8 @@ class ShardWriter(system: ActorSystem, hostedShards: String, proxyShard: String,
     ))
   }
 
-  val shardsWithRoles = List(shard(hostedShards), proxy(proxyShard))
+  val shardsWithRoles = shard(hostedShards) :: proxyShard.map(proxy(_))
+    //List(shard(hostedShards), proxy(proxyShard))
 
   val shardNames = shardsWithRoles.map(_._1)
   val shardRegions = shardsWithRoles.map(_._2)

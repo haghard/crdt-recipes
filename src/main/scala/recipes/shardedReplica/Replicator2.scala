@@ -65,11 +65,11 @@ class Replicator2(system: ActorSystem, shard: String) extends Actor with ActorLo
   ///*WriteMajority(2.second)*/
   override def receive = {
     case c: Command =>
-      //log.info(s"accept command ${c.i}")
-      input = c.i :: input
+      //input = c.i :: input
+      //log.info(s"replic input {}", input.mkString(","))
       replicator ! Update(DataKey, GSet.empty[Int], WriteLocal)(_.+(c.i))
     case c @ Changed(DataKey) =>
-      val numbers = c.get(DataKey).elements
-      log.info(s"Change on shard: {} - {}", shard, numbers.mkString(","))
+      val dstate = c.get(DataKey).elements
+      log.info(s"Change on shard: {} - {}", shard, dstate.mkString(","))
   }
 }

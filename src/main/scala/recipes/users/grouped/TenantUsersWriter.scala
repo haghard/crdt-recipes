@@ -1,29 +1,21 @@
-package recipes.users.vversions
+package recipes.users.grouped
 
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.cluster.Cluster
-
 import scala.concurrent.duration.FiniteDuration
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import recipes.users.{ActivateUser, CreateUser, LoginUser}
 
-object UserWriter {
-
-  case class CreateUser(userId: String, login: String, isActive: Boolean = false)
-
-  case class ActivateUser(userId: String, isActive: Boolean = true)
-  case class LoginUser(userId: String, isLogin: Boolean = true)
-
-  //case class DeleteUser(userId: Long)
+object TenantUsersWriter {
 
   def props(tenant: String, writer: ActorRef, delay: FiniteDuration, startWith: Int, limit: Int) =
-    Props(new UserWriter(tenant, writer, delay, startWith, limit))
+    Props(new TenantUsersWriter(tenant, writer, delay, startWith, limit))
 }
 
-class UserWriter(tenant: String, writer: ActorRef, delay: FiniteDuration, startWith: Long, limit: Int) extends Actor with ActorLogging {
-
-  import UserWriter._
+class TenantUsersWriter(tenant: String, writer: ActorRef, delay: FiniteDuration, startWith: Long, limit: Int)
+  extends Actor with ActorLogging {
 
   implicit val ex = context.system.dispatcher
   val cluster = Cluster(context.system)
@@ -81,5 +73,4 @@ class UserWriter(tenant: String, writer: ActorRef, delay: FiniteDuration, startW
           context.stop(self)
       }
   }
-
 }

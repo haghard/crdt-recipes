@@ -4,7 +4,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props}
 import akka.cluster.routing.{ClusterRouterGroup, ClusterRouterGroupSettings}
 import akka.routing.ConsistentHashingGroup
 import akka.routing.ConsistentHashingRouter.ConsistentHashableEnvelope
-import recipes.shardedReplica.ReplicatorForRole
+import recipes.shardedReplica.Replicator2
 import recipes.shardedReplica.sharding.ShardWriter.{Command, Tick}
 
 import scala.concurrent.duration.FiniteDuration
@@ -26,8 +26,8 @@ class ConsistentHashingRouterWriter(system: ActorSystem, shards: Vector[String],
   def create(shard: String) = {
     //routee
     context.system.actorOf(RouteeReplicator.props(
-      system.actorOf(ReplicatorForRole.props(system, shard), shard)
-    ), name = s"routee-replicator-$shard")
+      system.actorOf(Replicator2.props(system, shard), shard)
+    ), s"replicator-" + shard)
 
     val shardRouter = system.actorOf(
       ClusterRouterGroup(
@@ -40,6 +40,12 @@ class ConsistentHashingRouterWriter(system: ActorSystem, shards: Vector[String],
       ).props(), name = s"shard-router-$shard")
 
     shardRouter
+  }
+  
+  def asJava(shards: List[String]) = {
+    val jShard = new java.util.ArrayList[String]
+    shards.foreach(jShard.add(_))
+    jShard
   }
 
   val routers = shards.map(create(_))

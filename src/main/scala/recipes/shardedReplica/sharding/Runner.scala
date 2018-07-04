@@ -16,7 +16,7 @@ POC of this approach
   You can use Cluster Sharding and DData with roles. So, let's say that you go with 10 roles, 10,000 entities in each role.
   You would then start Replicators on the nodes with corresponding roles.
   You would also start Sharding on the nodes with corresponding roles.
-  On a node that doesn't have the a role you would start a sharding proxy for such role.
+  On a node that doesn't have the role you would start a sharding proxy for such role.
 
   When you want to send a message to an entity you first need to decide which role to use for that message.
   Can be simple hashCode modulo algorithm.
@@ -56,19 +56,20 @@ POC of this approach
 
 //Sharded replication with distributed data
 object Runner extends App {
-  val systemName = "counts"
+  val systemName = "counter"
 
   //We have 2 shards on each node and we replicate each shard 3 times
-  val shards = Vector("shard-A", "shard-B")
+  val allShards = Vector("alpha", "beta")
 
-  val commonConfig = ConfigFactory.parseString(
+  val configA = ConfigFactory.parseString(
     s"""
        akka {
           cluster {
-            roles = [ ${shards(0)}, ${shards(1)} ]
+            roles = [ ${allShards(0)} ]
             jmx.multi-mbeans-in-same-jvm = on
-            #sharding.state-store-mode = persistence
+            # sharding.state-store-mode = ddata persistence
           }
+
           actor.provider = cluster
           remote.artery.enabled = true
           remote.artery.canonical.hostname = 127.0.0.1
@@ -76,59 +77,64 @@ object Runner extends App {
       """
   )
 
+  val configB = ConfigFactory.parseString(
+    s"""
+       akka {
+          cluster {
+            roles = [ ${allShards(1)} ]
+            jmx.multi-mbeans-in-same-jvm = on
+            #sharding.state-store-mode = persistence
+          }
+
+          actor.provider = cluster
+          remote.artery.enabled = true
+          remote.artery.canonical.hostname = 127.0.0.1
+       }
+      """)
+
   //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBColumnFamilySample.java
   //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBSample.java
   //org.rocksdb.RocksDB.loadLibrary()
 
-  def portConfig(port: Int) = ConfigFactory.parseString(s"akka.remote.artery.canonical.port = $port")
+  def portConfig(port: Int) =
+    ConfigFactory.parseString(s"akka.remote.artery.canonical.port = $port")
 
-  val node1 = ActorSystem(systemName, portConfig(2550).withFallback(commonConfig))
-  val node2 = ActorSystem(systemName, portConfig(2551).withFallback(commonConfig))
-
-  //val node3 = ActorSystem(systemName, portConfig(2552).withFallback(commonConfig))
-  //val client = ActorSystem(systemName, portConfig(2553).withFallback(routerConfig))
+  val node1 = ActorSystem(systemName, portConfig(2550).withFallback(configA))
+  val node2 = ActorSystem(systemName, portConfig(2560).withFallback(configA))
+  val node3 = ActorSystem(systemName, portConfig(2551).withFallback(configB))
+  val node4 = ActorSystem(systemName, portConfig(2561).withFallback(configB))
 
 
   val node1Cluster = Cluster(node1)
   val node2Cluster = Cluster(node2)
-  //val node3Cluster = Cluster(node3)
-  //val node4Cluster = Cluster(client)
+  val node3Cluster = Cluster(node3)
+  val node4Cluster = Cluster(node4)
 
   node1Cluster.join(node1Cluster.selfAddress)
   node2Cluster.join(node1Cluster.selfAddress)
-  //node3Cluster.join(node1Cluster.selfAddress)
-  //node4Cluster.join(node1Cluster.selfAddress)
+  node3Cluster.join(node1Cluster.selfAddress)
+  node4Cluster.join(node1Cluster.selfAddress)
+  Helpers.waitForAllNodesUp(node1, node2, node3, node4)
 
-  Helpers.waitForAllNodesUp(node1, node2)
+  node1.actorOf(ShardWriter.props(node1, allShards(0), allShards(1), 5.seconds, 0), "alpha0-writer")
+  node2.actorOf(ShardWriter.props(node2, allShards(0), allShards(1), 6.seconds, 100), "alpha1-writer")
 
- /*
- Allocation
- [akka://counts@127.0.0.1:2550/system/sharding/shard-region-to-shard-A/shard-A/0] Allocate ReplicatorEntity
- [akka://counts@127.0.0.1:2550/system/sharding/shard-region-to-shard-B/shard-A/0] Allocate ReplicatorEntity
- [akka://counts@127.0.0.1:2551/system/sharding/shard-region-to-shard-A/shard-B/1] Allocate ReplicatorEntity
- [akka://counts@127.0.0.1:2551/system/sharding/shard-region-to-shard-B/shard-B/1] Allocate ReplicatorEntity
+  node3.actorOf(ShardWriter.props(node3, allShards(1), allShards(0), 10.seconds, 200), "beta0-writer")
+  node4.actorOf(ShardWriter.props(node4, allShards(1), allShards(0), 12.seconds, 300), "beta1-writer")
 
- Distribution
- [akka://counts@127.0.0.1:2550/system/sharding/shard-region-to-shard-A/shard-A/0] 0,20,12,16,104,8,4,100
- [akka://counts@127.0.0.1:2550/system/sharding/shard-region-to-shard-B/shard-A/0] 10,14,106,6,102,2,22,18
- [akka://counts@127.0.0.1:2551/system/sharding/shard-region-to-shard-A/shard-B/1] 101,5,1,21,9,13,105,17
- [akka://counts@127.0.0.1:2551/system/sharding/shard-region-to-shard-B/shard-B/1] 7,103,3,11,23,19,107,15
- */
-
-  //val a2 = node2.actorOf(ShardReplicator.props(node2, shards(0)), shards(0))
-  //val b2 = node2.actorOf(ShardReplicator.props(node2, shards(1)), shards(1))
-  node1.actorOf(ShardWriter.props(node1, shards, 2.seconds, 0))
-
-  //val a3 = node3.actorOf(ShardReplicator.props(node3, shards(0), 6.seconds), shards(0))
-  //val b3 = node3.actorOf(ShardReplicator.props(node3, shards(1), 5.seconds), shards(1))
-  node2.actorOf(ShardWriter.props(node2, shards, 6.seconds, 100))
-
-
-  Helpers.wait(50.second)
+  Helpers.wait(59.second)
 
   node1Cluster.leave(node1Cluster.selfAddress)
   node1.terminate
 
   node2Cluster.leave(node2Cluster.selfAddress)
   node2.terminate
+
+
+  node3Cluster.leave(node3Cluster.selfAddress)
+  node3.terminate
+
+  node4Cluster.leave(node4Cluster.selfAddress)
+  node4.terminate
+
 }

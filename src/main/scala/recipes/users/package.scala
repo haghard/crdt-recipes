@@ -1,6 +1,6 @@
 package recipes.users
 
-import akka.cluster.ddata.{Key, ORMap, ReplicatedData}
+import akka.cluster.ddata.{Key, ORMap, ReplicatedData, VersionVector}
 import recipes.users.crdt.{CrdtUsers, VersionedUsers}
 
 case class Node(host: String, port: Int)
@@ -12,10 +12,14 @@ object UsersKey extends Key[VersionedUsers]("users")
 //One bucket contains one ORMap
 case class UsersBucket(bucketNumber: Int) extends Key[ORMap[String, CrdtUsers]](bucketNumber.toString)
 
-case class VersionedUsersBucket(bucketNumber: Int) extends Key[VersionedUsers](bucketNumber.toString)
+case class UserSegment(tenant: String) extends Key[VersionedUsers](tenant)
 
 trait Partitioner[+T <: ReplicatedData] {
   type ReplicatedKey <: Key[T]
+
+  //akka.cluster.ddata.VersionVector.empty
+  //akka.cluster.VectorClock
+
   //30 entities and 6 buckets.
   //Each bucket contains 5 entities which means instead of one ORMap at least (30/5) = 6 ORMaps will be used
   protected val maxNumber = 30l
@@ -45,6 +49,9 @@ trait VersionVectorPartitioner extends Partitioner[VersionedUsers] {
   override type ReplicatedKey = UsersKey.type /*VersionedUsersBucket*/
   override def getBucket(key: Long) = {
     UsersKey
-    //VersionedUsersBucket(key.toInt)
   }
 }
+
+case class CreateUser(userId: String, login: String, isActive: Boolean = false)
+case class ActivateUser(userId: String, isActive: Boolean = true)
+case class LoginUser(userId: String, isLogin: Boolean = true)

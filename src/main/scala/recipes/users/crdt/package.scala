@@ -1,10 +1,8 @@
 package recipes.users.crdt
 
 import akka.cluster.UniqueAddress
-import akka.cluster.ddata.ReplicatedData
-import javax.xml.bind.DatatypeConverter
+import akka.cluster.ddata.{LWWRegister, ORMap, ReplicatedData}
 import recipes.users.{Node, User}
-
 import scala.collection.immutable.TreeSet
 
 trait CrdtEntryLike[T] {
@@ -63,7 +61,7 @@ case class CrdtUsers(underlying: CrdtEntryLike[User] = CrdtUsersEntry()) extends
 
 
 trait VersionedEntryLike[T] {
-  def users: Iterable[T]
+  def users: TraversableOnce[T]
 
   def versions: VersionVector[Node]
 
@@ -91,7 +89,9 @@ case class VersionedEntry(
   override def toString = users.map(_.id).mkString(",")
 }
 
+/*
 object ContentUtils {
+  import javax.xml.bind.DatatypeConverter
   private val MD5 = java.security.MessageDigest.getInstance("MD5")
 
   def isDiff(thisUser: User, thatUser: User) = {
@@ -102,10 +102,12 @@ object ContentUtils {
     thisHash != thatHash
   }
 }
-
+*/
 
 //make in serializable
-case class VersionedUsers(owner: Node, underlying: VersionedEntryLike[User] = VersionedEntry()) extends ReplicatedData {
+case class VersionedUsers(
+  owner: Node,
+  underlying: VersionedEntryLike[User] = VersionedEntry()) extends ReplicatedData {
   type T = VersionedUsers
 
   def add(user: User, node: Node): VersionedUsers =
@@ -117,7 +119,10 @@ case class VersionedUsers(owner: Node, underlying: VersionedEntryLike[User] = Ve
   def update(user: User, updatedUser: User, node: Node): VersionedUsers =
     copy(underlying = underlying.replace(user, updatedUser, node))
 
-  def elements: Iterable[User] = underlying.users
+  def elements: TraversableOnce[User] = underlying.users
+
+  def isDiff(thisUser: User, thatUser: User) =
+    thisUser.online != thatUser.online || thisUser.active != thatUser.active
 
   override def merge(that: VersionedUsers): VersionedUsers = {
     if (underlying.versions < that.underlying.versions) {
@@ -127,7 +132,7 @@ case class VersionedUsers(owner: Node, underlying: VersionedEntryLike[User] = Ve
     } else if (underlying.versions > that.underlying.versions) {
       this
     } else if (underlying.versions <> that.underlying.versions) {
-      println(s"*****Concurrent versions on ${this.owner} *****")
+      println(s"*****Concurrent versions detected on ${this.owner} *****")
 
       //merge vvs
       val mergedVV = underlying.versions merge that.underlying.versions
@@ -147,17 +152,16 @@ case class VersionedUsers(owner: Node, underlying: VersionedEntryLike[User] = Ve
         val dominatedUserVersion =
           (thisUser, thatUser) match {
             case (Some(thisUser), Some(thatUser)) =>
-              //if(thisUser.online != thatUser.online || thisUser.active != thatUser.active) {
-              if(ContentUtils.isDiff(thisUser, thatUser)) {
+              if(isDiff(thisUser, thatUser)) {
                 //We operate under assumption that we update a particular user on the node where this user had been created
                 val createdAt = thisUser.createdAt
-                val localV = underlying.versions.version(createdAt)
-                val remoteV = that.underlying.versions.version(createdAt)
-                if (localV > remoteV) {
-                  println(s"[$localV:$thisUser] vs [$remoteV:$thatUser winner $thisUser]")
+                val thisV = underlying.versions.version(createdAt)
+                val thatV = that.underlying.versions.version(createdAt)
+                if (thisV > thatV) {
+                  println(s"[$thisV:$thisUser] vs [$thatV:$thatUser winner $thisUser]")
                   thisUser
                 } else {
-                  println(s"[$localV:$thisUser] vs [$remoteV:$thatUser winner $thatUser]")
+                  println(s"[$thisV:$thisUser] vs [$thatV:$thatUser winner $thatUser]")
                   thatUser
                 }
               } else thisUser
@@ -169,8 +173,7 @@ case class VersionedUsers(owner: Node, underlying: VersionedEntryLike[User] = Ve
         acc + dominatedUserVersion
       }
 
-      val mergedEntry = VersionedEntry(mergedUsers, mergedVV)
-      VersionedUsers(this.owner, mergedEntry)
+      VersionedUsers(this.owner, VersionedEntry(mergedUsers, mergedVV))
     } else {
       println("Unexpected branch !!!!")
       throw new Exception("Unexpected branch !!!!")
@@ -184,12 +187,11 @@ object Implicits {
   }
 
   implicit val addOrd = new scala.Ordering[Node] {
-    override def compare(x: Node, y: Node) =
-    //Member.addressOrdering.compare(x, y)
+    override def compare(a: Node, b: Node) =
       Ordering.fromLessThan[Node] { (x, y) =>
         if (x.host != y.host) x.host.compareTo(y.host) < 0
         else if (x.port != y.port) x.port < y.port
         else false
-      }.compare(x, y)
+      }.compare(a, b)
   }
 }

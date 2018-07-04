@@ -3,18 +3,18 @@ package recipes.shardedReplica
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import akka.cluster.Cluster
 import akka.cluster.ddata.Replicator._
-import akka.cluster.ddata.{PNCounter, PNCounterKey, Replicator, ReplicatorSettings}
+import akka.cluster.ddata._
 import com.typesafe.config.ConfigFactory
 import recipes.shardedReplica.sharding.ShardWriter.Command
 
-object ReplicatorForRole {
-  def props(system: ActorSystem, shardName: String) =
-    Props(new ReplicatorForRole(system, shardName))
+object Replicator2 {
+  def props(system: ActorSystem, role: String) = Props(new Replicator2(system, role))
 }
 
-class ReplicatorForRole(system: ActorSystem, shard: String) extends Actor with ActorLogging {
-  val replicatorName = s"replicator-for-$shard"
-  val DataKey = PNCounterKey(shard + "-counter")
+class Replicator2(system: ActorSystem, shard: String) extends Actor with ActorLogging {
+  val replicatorName = s"$shard-replicator"
+
+  val DataKey = GSetKey[Int](shard + "key")
 
   implicit val cluster = Cluster(system)
 
@@ -53,19 +53,23 @@ class ReplicatorForRole(system: ActorSystem, shard: String) extends Actor with A
        | }
       """.stripMargin)
 
-  val settings = ReplicatorSettings(config)
-  val replicator = system.actorOf(Replicator.props(settings), replicatorName)
+  val replicator = system.actorOf(Replicator.props(ReplicatorSettings(config)), replicatorName)
+
+  var input = List.empty[Int]
 
   override def preStart(): Unit = {
+    log.info("Start replicator {} ", replicatorName)
     replicator ! Subscribe(DataKey, self)
   }
 
   ///*WriteMajority(2.second)*/
   override def receive = {
-    case Command =>
-      replicator ! Update(DataKey, PNCounter(), WriteLocal)(_ + 1)
+    case c: Command =>
+      //log.info(s"accept command ${c.i}")
+      input = c.i :: input
+      replicator ! Update(DataKey, GSet.empty[Int], WriteLocal)(_.+(c.i))
     case c @ Changed(DataKey) =>
-      val data = c.get(DataKey)
-      log.info(s"Gossip change - Shard: {} - Current count:{}", shard, data.getValue)
+      val numbers = c.get(DataKey).elements
+      log.info(s"Change on shard: {} - {}", shard, numbers.mkString(","))
   }
 }

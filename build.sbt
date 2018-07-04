@@ -1,12 +1,8 @@
 import com.typesafe.sbt.SbtMultiJvm
 import com.typesafe.sbt.SbtMultiJvm.MultiJvmKeys.MultiJvm
+import sbt.CrossVersion
 
 val akkaVersion = "2.5.13"
-
-/*resolvers ++= Seq(
-  "maven central"   at "http://repo.maven.apache.org/maven2",
-  "rbmhtechnology"  at "https://dl.bintray.com/rbmhtechnology/maven/"
-)*/
 
 val project = Project(
   id = "crdt-recipes",
@@ -21,26 +17,26 @@ val project = Project(
 
       "com.typesafe.akka" %%  "akka-cluster-sharding" % akkaVersion,
       "com.typesafe.akka" %% "akka-distributed-data" % akkaVersion,
-      //"com.typesafe.akka" %% "akka-http" % "10.1.0",
-      //"com.typesafe.akka" %% "akka-http-testkit" % "10.0.11",
-      
+
       "eu.timepit"        %% "crjdt-core" % "0.0.8-SNAPSHOT", //local build
-      //"com.twitter"       %% "algebird-core" % "0.13.0",
+
+      "com.twitter"       %% "algebird-core" % "0.13.0",
       
       "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.3",
 
-      "com.github.mpilquist" %% "simulacrum"   % "0.10.0",
-      
-      //"org.typelevel"        %% "cats-core"         % "0.9.0",
+      "com.github.mpilquist" %% "simulacrum"   % "0.12.0",
 
       "org.rocksdb"          %  "rocksdbjni"   % "5.5.1",
       "io.dmitryivanov"      %% "scala-crdt"   % "1.0.1",
 
+      //"com.rbmhtechnology" %% "eventuate-crdt" % "0.10",
+
       "Merlijn Boogerd" %%  "computational-crdts" % "1.0",
 
-      "com.typesafe.akka" %%  "akka-multi-node-testkit" % akkaVersion,
-      "com.lihaoyi"          %  "ammonite"     % "1.0.3" % "test" cross CrossVersion.full),
+      "com.github.mpilquist" %%   "simulacrum" % "0.12.0",
+      "com.typesafe.akka"    %%   "akka-multi-node-testkit" % akkaVersion,
+      "com.lihaoyi"          %    "ammonite"     % "1.0.3" % "test" cross CrossVersion.full),
     // make sure that MultiJvm test are compiled by the default test compilation
     compile in MultiJvm <<= (compile in MultiJvm) triggeredBy (compile in Test),
     // disable parallel tests
@@ -91,7 +87,6 @@ scalacOptions ++= Seq(
   "-Ywarn-dead-code"                  // Warn when dead code is identified.
 )
 */
-
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 

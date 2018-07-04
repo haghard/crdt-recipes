@@ -7,8 +7,8 @@ import scala.collection.immutable.SortedMap
   VersionVector have 3 types of relationships
        
     A >= B - A descends B
-    A > B A dominates B example [{a:2}, {b:3}] dominates [{a:1}, {b:3}]
-    Concurrent A | B
+    A > B  - A dominates B example [{a:2}, {b:3}] dominates [{a:1}, {b:3}]
+    Concurrent A <> B  [{a:1}, {b:0}] <> [{a:0}, {b:1}] 
  */
 object VersionVector {
   sealed trait Ordering

@@ -61,7 +61,7 @@ object Runner extends App {
   //We have 2 shards on each node and we replicate each shard 3 times
   val allShards = Vector("alpha", "beta", "gamma")
 
-  val configA = ConfigFactory.parseString(
+  /*val configA = ConfigFactory.parseString(
     s"""
        akka {
           cluster {
@@ -73,6 +73,7 @@ object Runner extends App {
           actor.provider = cluster
           remote.artery.enabled = true
           remote.artery.canonical.hostname = 127.0.0.1
+          
        }
       """)
 
@@ -89,74 +90,108 @@ object Runner extends App {
           remote.artery.enabled = true
           remote.artery.canonical.hostname = 127.0.0.1
        }
-      """)
+      """)*/
 
-  val configC = ConfigFactory.parseString(
+  //RocksDurableStore
+  //LmdbDurableStore
+  def conf(shardName: String) =
+    ConfigFactory.parseString(
+    s"""
+      |
+      |akka {
+      |  cluster {
+      |    roles = [ $shardName ]
+      |    jmx.multi-mbeans-in-same-jvm = on
+      |    #sharding.state-store-mode = persistence
+      |
+      |    distributed-data {
+      |     name = ${shardName}-replicator
+      |     role = $shardName
+      |     gossip-interval = 1 s
+      |     use-dispatcher = ""
+      |     notify-subscribers-interval = 500 ms
+      |     max-delta-elements = 1000
+      |     pruning-interval = 120 s
+      |     max-pruning-dissemination = 300 s
+      |     pruning-marker-time-to-live = 6 h
+      |     serializer-cache-time-to-live = 10s
+      |
+      |     delta-crdt {
+      |	      enabled = on
+      |	      max-delta-size = 1000
+      |     }
+      |
+      |     durable {
+      |	      keys = []
+      |	      pruning-marker-time-to-live = 10 d
+      |	      store-actor-class = akka.cluster.ddata.LmdbDurableStore
+      |	      use-dispatcher = akka.cluster.distributed-data.durable.pinned-store
+      |	      pinned-store {
+      |	        executor = thread-pool-executor
+      |	        type = PinnedDispatcher
+      |       }
+      |     }
+      |
+      |    }
+      |  }
+      |
+      |  actor.provider = cluster
+      |  remote.artery.enabled = true
+      |  remote.artery.canonical.hostname = 127.0.0.1
+      |}
+    """.stripMargin)
+
+  def conf0(shardName: String) =
+      ConfigFactory.parseString(
       s"""
-       akka {
-          cluster {
-            roles = [ ${allShards(2)} ]
-            jmx.multi-mbeans-in-same-jvm = on
-            #sharding.state-store-mode = persistence
-          }
-
-          actor.provider = cluster
-          remote.artery.enabled = true
-          remote.artery.canonical.hostname = 127.0.0.1
-       }
-      """)
-
-  //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBColumnFamilySample.java
-  //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBSample.java
-  //org.rocksdb.RocksDB.loadLibrary()
+        |
+        |akka {
+        |  cluster {
+        |    roles = [ $shardName ]
+        |    jmx.multi-mbeans-in-same-jvm = on
+        |    #sharding.state-store-mode = persistence
+        |  }
+        |
+        |
+        |  actor.provider = cluster
+        |  remote.artery.enabled = true
+        |  remote.artery.canonical.hostname = 127.0.0.1
+        |}
+      """.stripMargin)
 
   def portConfig(port: Int) =
     ConfigFactory.parseString(s"akka.remote.artery.canonical.port = $port")
 
-  val node1 = ActorSystem(systemName, portConfig(2550).withFallback(configA))
-  val node2 = ActorSystem(systemName, portConfig(2551).withFallback(configA))
+  val node1 = ActorSystem(systemName, portConfig(2550).withFallback(conf(allShards(0))))
+  val node2 = ActorSystem(systemName, portConfig(2551).withFallback(conf(allShards(0))))
 
-  val node3 = ActorSystem(systemName, portConfig(2560).withFallback(configB))
-  val node4 = ActorSystem(systemName, portConfig(2561).withFallback(configB))
-
-  val node5 = ActorSystem(systemName, portConfig(2570).withFallback(configC))
-  val node6 = ActorSystem(systemName, portConfig(2571).withFallback(configC))
+  val node3 = ActorSystem(systemName, portConfig(2552).withFallback(conf(allShards(1))))
+  val node4 = ActorSystem(systemName, portConfig(2553).withFallback(conf(allShards(1))))
 
   val node1Cluster = Cluster(node1)
   val node2Cluster = Cluster(node2)
   val node3Cluster = Cluster(node3)
   val node4Cluster = Cluster(node4)
-  val node5Cluster = Cluster(node5)
-  val node6Cluster = Cluster(node6)
 
   node1Cluster.join(node1Cluster.selfAddress)
   node2Cluster.join(node1Cluster.selfAddress)
-
   node3Cluster.join(node1Cluster.selfAddress)
   node4Cluster.join(node1Cluster.selfAddress)
 
-  node5Cluster.join(node1Cluster.selfAddress)
-  node6Cluster.join(node1Cluster.selfAddress)
+  Helpers.waitForAllNodesUp(node1, node2, node3, node4)
 
-  Helpers.waitForAllNodesUp(node1, node2, node3, node4, node5, node6)
+  node1.actorOf(ShardWriter.props(node1, allShards(0), allShards(1), 5.seconds, 0), "alpha0-writer")
+  node2.actorOf(ShardWriter.props(node2, allShards(0), allShards(1), 5.seconds, 100), "alpha1-writer")
 
-  node1.actorOf(ShardWriter.props(node1, allShards(0), List(allShards(1), allShards(2)), 3.seconds, 0), "alpha0-writer")
-  node2.actorOf(ShardWriter.props(node2, allShards(0), List(allShards(1), allShards(2)), 3.seconds, 100), "alpha1-writer")
+  node3.actorOf(ShardWriter.props(node3, allShards(1), allShards(0), 6.seconds, 200), "betta0-writer")
+  node4.actorOf(ShardWriter.props(node4, allShards(1), allShards(0), 6.seconds, 300), "betta1-writer")
 
-  node3.actorOf(ShardWriter.props(node3, allShards(1), List(allShards(0), allShards(2)), 4.seconds, 200), "beta0-writer")
-  node4.actorOf(ShardWriter.props(node4, allShards(1), List(allShards(0), allShards(2)), 4.seconds, 300), "beta1-writer")
-
-  node5.actorOf(ShardWriter.props(node5, allShards(2), List(allShards(0), allShards(1)), 5.seconds, 200), "beta0-writer")
-  node6.actorOf(ShardWriter.props(node6, allShards(2), List(allShards(0), allShards(1)), 5.seconds, 300), "beta1-writer")
-
-  Helpers.wait(59.second)
-
-  node1Cluster.leave(node1Cluster.selfAddress)
-  node1.terminate
+  Helpers.wait(50.second)
 
   node2Cluster.leave(node2Cluster.selfAddress)
   node2.terminate
 
+  Helpers.wait(30.second)
 
   node3Cluster.leave(node3Cluster.selfAddress)
   node3.terminate
@@ -164,10 +199,6 @@ object Runner extends App {
   node4Cluster.leave(node4Cluster.selfAddress)
   node4.terminate
 
-  node5Cluster.leave(node5Cluster.selfAddress)
-  node5.terminate
-
-  node6Cluster.leave(node6Cluster.selfAddress)
-  node6.terminate
-
+  node1Cluster.leave(node1Cluster.selfAddress)
+  node1.terminate
 }

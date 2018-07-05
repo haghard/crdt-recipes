@@ -123,8 +123,6 @@ package object hashing {
       if (rf > ring.keySet.size)
         throw new Exception("Replication factor more than the number of the ranges on a ring")
 
-      //com.rbmhtechnology.eventuate.ConcurrentVersions
-      
       val keyBytes = key.getBytes(Encoding)
       val keyHash = CassandraMurmurHash.hash3_x64_128(ByteBuffer.wrap(keyBytes), 0, keyBytes.length, seed)(1)
       if (ring.containsKey(keyHash)) {

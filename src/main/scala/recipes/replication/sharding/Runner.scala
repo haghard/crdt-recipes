@@ -1,4 +1,4 @@
-package recipes.shardedReplica.sharding
+package recipes.replication.sharding
 
 import akka.actor.ActorSystem
 import akka.cluster.Cluster
@@ -7,11 +7,11 @@ import recipes.Helpers
 
 import scala.concurrent.duration._
 
-//runMain recipes.shardedReplica.sharding.Runner
-
 /*
 POC of this approach
   https://groups.google.com/forum/#!topic/akka-user/MO-4XhwhAN0 with sharding
+  Sharded replication with distributed data
+
 
   You can use Cluster Sharding and DData with roles. So, let's say that you go with 10 roles, 10,000 entities in each role.
   You would then start Replicators on the nodes with corresponding roles.
@@ -52,48 +52,32 @@ POC of this approach
   If so, they can simply read the data if they are on the node with the right role.
 
   Yes they can read instead, but then you would need to know when to read. Perhaps you do that for each request, that would also work.
-*/
 
-//Sharded replication with distributed data
+  !!! Does'n work as expected.
+*/
 object Runner extends App {
   val systemName = "counter"
 
   //We have 2 shards on each node and we replicate each shard 3 times
-  val allShards = Vector("alpha", "beta", "gamma")
+  val allShards = Vector("alpha", "beta")
 
-  /*val configA = ConfigFactory.parseString(
+  def conf1(shardName: String) =
+    ConfigFactory.parseString(
     s"""
-       akka {
-          cluster {
-            roles = [ ${allShards(0)} ]
-            jmx.multi-mbeans-in-same-jvm = on
-            # sharding.state-store-mode = ddata persistence
-          }
+     akka {
+        cluster {
+          roles = [ $shardName ]
+          jmx.multi-mbeans-in-same-jvm = on
+        }
+        actor.provider = cluster
+        remote.artery.enabled = true
+        remote.artery.canonical.hostname = 127.0.0.1
+     }
+    """.stripMargin)
 
-          actor.provider = cluster
-          remote.artery.enabled = true
-          remote.artery.canonical.hostname = 127.0.0.1
-          
-       }
-      """)
 
-  val configB = ConfigFactory.parseString(
-    s"""
-       akka {
-          cluster {
-            roles = [ ${allShards(1)} ]
-            jmx.multi-mbeans-in-same-jvm = on
-            #sharding.state-store-mode = persistence
-          }
-
-          actor.provider = cluster
-          remote.artery.enabled = true
-          remote.artery.canonical.hostname = 127.0.0.1
-       }
-      """)*/
-
-  //RocksDurableStore
   //LmdbDurableStore
+  //RocksDurableStore
   def conf(shardName: String) =
     ConfigFactory.parseString(
     s"""
@@ -124,14 +108,13 @@ object Runner extends App {
       |     durable {
       |	      keys = []
       |	      pruning-marker-time-to-live = 10 d
-      |	      store-actor-class = akka.cluster.ddata.LmdbDurableStore
+      |	      store-actor-class = akka.cluster.ddata.RocksDurableStore
       |	      use-dispatcher = akka.cluster.distributed-data.durable.pinned-store
       |	      pinned-store {
       |	        executor = thread-pool-executor
       |	        type = PinnedDispatcher
       |       }
-      |     }
-      |
+      |      }
       |    }
       |  }
       |
@@ -141,32 +124,14 @@ object Runner extends App {
       |}
     """.stripMargin)
 
-  def conf0(shardName: String) =
-      ConfigFactory.parseString(
-      s"""
-        |
-        |akka {
-        |  cluster {
-        |    roles = [ $shardName ]
-        |    jmx.multi-mbeans-in-same-jvm = on
-        |    #sharding.state-store-mode = persistence
-        |  }
-        |
-        |
-        |  actor.provider = cluster
-        |  remote.artery.enabled = true
-        |  remote.artery.canonical.hostname = 127.0.0.1
-        |}
-      """.stripMargin)
-
   def portConfig(port: Int) =
     ConfigFactory.parseString(s"akka.remote.artery.canonical.port = $port")
 
-  val node1 = ActorSystem(systemName, portConfig(2550).withFallback(conf(allShards(0))))
-  val node2 = ActorSystem(systemName, portConfig(2551).withFallback(conf(allShards(0))))
+  val node1 = ActorSystem(systemName, portConfig(2550).withFallback(conf1(allShards(0))))
+  val node2 = ActorSystem(systemName, portConfig(2551).withFallback(conf1(allShards(0))))
 
-  val node3 = ActorSystem(systemName, portConfig(2552).withFallback(conf(allShards(1))))
-  val node4 = ActorSystem(systemName, portConfig(2553).withFallback(conf(allShards(1))))
+  val node3 = ActorSystem(systemName, portConfig(2560).withFallback(conf1(allShards(1))))
+  val node4 = ActorSystem(systemName, portConfig(2561).withFallback(conf1(allShards(1))))
 
   val node1Cluster = Cluster(node1)
   val node2Cluster = Cluster(node2)
@@ -180,18 +145,22 @@ object Runner extends App {
 
   Helpers.waitForAllNodesUp(node1, node2, node3, node4)
 
-  node1.actorOf(ShardWriter.props(node1, allShards(0), allShards(1), 5.seconds, 0), "alpha0-writer")
-  node2.actorOf(ShardWriter.props(node2, allShards(0), allShards(1), 5.seconds, 100), "alpha1-writer")
+  node1.actorOf(ShardWriter.props(node1, allShards(0), allShards(1), 2.seconds, 0), "alpha0-writer")
+  node2.actorOf(ShardWriter.props(node2, allShards(0), allShards(1), 2.seconds, 100), "alpha1-writer")
 
-  node3.actorOf(ShardWriter.props(node3, allShards(1), allShards(0), 6.seconds, 200), "betta0-writer")
-  node4.actorOf(ShardWriter.props(node4, allShards(1), allShards(0), 6.seconds, 300), "betta1-writer")
+  node3.actorOf(ShardWriter.props(node3, allShards(1), allShards(0), 3.seconds, 200), "betta0-writer")
+  node4.actorOf(ShardWriter.props(node4, allShards(1), allShards(0), 4.seconds, 300), "betta1-writer")
 
-  Helpers.wait(50.second)
+  /*Helpers.wait(40.second)
 
   node2Cluster.leave(node2Cluster.selfAddress)
   node2.terminate
+  */
 
-  Helpers.wait(30.second)
+  Helpers.wait(20.second)
+
+  node2Cluster.leave(node2Cluster.selfAddress)
+  node2.terminate
 
   node3Cluster.leave(node3Cluster.selfAddress)
   node3.terminate
@@ -201,4 +170,5 @@ object Runner extends App {
 
   node1Cluster.leave(node1Cluster.selfAddress)
   node1.terminate
+
 }

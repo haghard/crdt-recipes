@@ -1,9 +1,9 @@
-package recipes.shardedReplica.sharding
+package recipes.replication.sharding
 
+import java.util.UUID
+import recipes.replication.sharding.ShardWriter.Command
 import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props}
 import akka.cluster.sharding.{ClusterSharding, ClusterShardingSettings, ShardRegion}
-import recipes.shardedReplica.ReplicatorForShard
-import recipes.shardedReplica.sharding.ShardWriter.Command
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -17,37 +17,34 @@ object ShardWriter {
 }
 
 class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, interval: FiniteDuration,
-  startWith: Int) extends Actor with ActorLogging {
-
+  startWith: Int) extends Actor with ActorLogging with akka.actor.Timers {
   import ShardWriter._
-  import system.dispatcher
 
-  system.scheduler.schedule(interval, interval, self, Tick)
+  timers.startPeriodicTimer(Tick, Tick, interval)
 
-  /*def entityId: ShardRegion.ExtractEntityId = {
+  def entityId: ShardRegion.ExtractEntityId = {
     case msg @ Command(id) => ((id % shardNames.size).toString, msg)
   }
 
   def shardId: ShardRegion.ExtractShardId = {
     case Command(id) => shardNames(id % shardNames.size)
     case ShardRegion.StartEntity(id) => shardNames(id.hashCode % shardNames.size)
+  }
+
+  /*def entityId(role: String): ShardRegion.ExtractEntityId = {
+    case msg @ Command(_) => (role.toString, msg)
+  }
+
+  def shardId(role: String): ShardRegion.ExtractShardId = {
+    case Command(_) => role
+    case ShardRegion.StartEntity(_) => role
   }*/
 
   def createShard(role: String) = {
-    def entityId: ShardRegion.ExtractEntityId = {
-      case msg @ Command(_) => (role.toString, msg)
-    }
-
-    def shardId: ShardRegion.ExtractShardId = {
-      case Command(_) => role
-      case ShardRegion.StartEntity(_) => role
-    }
-
-    val replicator = system.actorOf(ReplicatorForShard.props(system, role), s"replicator-$role")
     log.info(s"Create local shard for {}", role)
     (role, ClusterSharding(system).start(
-      typeName = "ddomain",
-      entityProps = DomainEntity.props(replicator),
+      typeName = "replicas",
+      entityProps = DomainEntity.props(role),
       settings = ClusterShardingSettings(system).withRole(role).withRememberEntities(true),
       extractEntityId = entityId,
       extractShardId = shardId
@@ -56,26 +53,17 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
 
   //it will delegate messages to other `ShardRegion` actors on other nodes, but not host any entity actors itself.
   def createProxy(role: String) = {
-    def entityId: ShardRegion.ExtractEntityId = {
-      case msg @ Command(_) => (role, msg)
-    }
-
-    def shardId: ShardRegion.ExtractShardId = {
-      case Command(_) => role
-      case ShardRegion.StartEntity(_) => role
-    }
-
     log.info(s"Create proxy for {}", role)
-    (role + "-proxy", ClusterSharding(system).startProxy(
-      typeName = "ddomain",
+    (role, ClusterSharding(system).startProxy(
+      typeName = "replicas",
       role = Some(role),
       extractEntityId = entityId,
       extractShardId = shardId
     ))
   }
 
-  val shardsWithRoles = List(createShard(hostedShard), createProxy(proxy))
-  val shardNames = shardsWithRoles.map(_._1)
+  val shardsWithRoles = Vector(createShard(hostedShard), createProxy(proxy))
+  val shardNames = shardsWithRoles.map("shards-" + _._1)
   val shardRegions = shardsWithRoles.map(_._2)
 
   val shards = shardRegions.zipWithIndex./:(Map.empty[Int, ActorRef]) { (acc, c) =>
@@ -84,7 +72,8 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
 
   var i = startWith
 
-  override def receive = active(0)
+  override def receive =
+    active(0)
 
   def active(index: Int): Receive = {
     case Tick =>
@@ -94,17 +83,23 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
        log.info("writer pick {} for message {}", role, i)
        shardRegion ! Command(i)
        i = i + 1
-       if(i % shardNames.size == 0)
-         context.become(active(index + 1))
+       //if(i % shardNames.size == 0)
+       context.become(active(index + 1))
   }
 }
 
 
 object DomainEntity {
-  def props(replicator: ActorRef) = Props(new DomainEntity(replicator))
+  def props(role: String) = Props(new DomainEntity(role))
 }
 
-class DomainEntity(replicator: ActorRef) extends Actor with ActorLogging {
+class DomainEntity(role: String) extends Actor with ActorLogging {
+  log.info(s"++++++++++ start DomainEntity for {} ", role)
+  val postfix = UUID.randomUUID().toString.take(6)
+
+  val replicator =
+    context.actorOf(ReplicatorForShardS.props(role), s"rentity-$role-$postfix")
+
   override def receive = {
     case cmd: Command =>
       replicator forward cmd

@@ -8,15 +8,15 @@ import akka.cluster.ddata.DurableStore._
 import akka.serialization.{SerializationExtension, SerializerWithStringManifest}
 import com.typesafe.config.Config
 import org.rocksdb.RocksDB
+import org.rocksdb._
+import org.rocksdb.util.SizeUnit
 
 object RocksDurableStore {
   def props(config: Config): Props =
     Props(new RocksDurableStore(config))
 }
 
-
 //see akka.cluster.ddata.DurableStore for implementation
-
 
 //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBColumnFamilySample.java
 //https://github.com/facebook/rocksdb/blob/master/java/samples/src/main/java/RocksDBSample.java
@@ -33,14 +33,21 @@ final class RocksDurableStore(config: Config) extends Actor with ActorLogging {
       new File(path)
   }
 
-
-  override def receive: Receive = {
+  override def preStart(): Unit = {
     RocksDB.loadLibrary()
-    init
+    log.info(s"******************* ${dir.getAbsolutePath} ********************")
   }
 
+  override def receive: Receive = init
+
   /*val db: RocksDB = {
-    val options: Options = new Options().setCreateIfMissing(true)
+    val options: Options = new Options()
+      .setCreateIfMissing(true)
+      /*.setWriteBufferSize(8 * SizeUnit.KB)
+      .setMaxWriteBufferNumber(3)
+      .setMaxBackgroundCompactions(10)*/
+      //.setCompressionType(CompressionType.SNAPPY_COMPRESSION)
+      //.setCompactionStyle(CompactionStyle.UNIVERSAL)
     RocksDB.open(options, dir.getPath)
   }*/
 
@@ -48,7 +55,7 @@ final class RocksDurableStore(config: Config) extends Actor with ActorLogging {
 
   def init: Receive = {
     case LoadAll =>
-      log.info("************** LoadAll ******")
+      //log.info("************** LoadAll ******")
       // no files to load
       sender() ! LoadAllCompleted
       context.become(active)

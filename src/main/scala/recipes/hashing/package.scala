@@ -119,20 +119,20 @@ package object hashing {
         }
       } else false
 
-    override def shardFor(key: String, rf: Int): Set[Shard] = {
-      if (rf > ring.keySet.size)
+    override def shardFor(key: String, RF: Int): Set[Shard] = {
+      if (RF > ring.keySet.size)
         throw new Exception("Replication factor more than the number of the ranges on a ring")
 
       val keyBytes = key.getBytes(Encoding)
       val keyHash = CassandraMurmurHash.hash3_x64_128(ByteBuffer.wrap(keyBytes), 0, keyBytes.length, seed)(1)
       if (ring.containsKey(keyHash)) {
-        ring.keySet.asScala.take(rf).map(ring.get).to[scala.collection.immutable.Set]
+        ring.keySet.asScala.take(RF).map(ring.get).to[scala.collection.immutable.Set]
       } else {
         val tail = ring.tailMap(keyHash)
-        val candidates = tail.keySet.asScala.take(rf).map(ring.get).to[scala.collection.immutable.Set]
+        val candidates = tail.keySet.asScala.take(RF).map(ring.get).to[scala.collection.immutable.Set]
         //println(s"got ${candidates.mkString(",")} till the end of range")
-        if (candidates.size < rf) {
-          val rest  = rf - candidates.size
+        if (candidates.size < RF) {
+          val rest  = RF - candidates.size
           //println(s"the end is reached. need ${rest} more")
           //we must be at the end of the ring so we go to the first entry and so on
           candidates ++ ring.keySet.asScala.take(rest).map(ring.get).to[scala.collection.immutable.Set]

@@ -22,6 +22,8 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
 
   timers.startPeriodicTimer(Tick, Tick, interval)
 
+  val domainName = "replicas"
+
   def entityId: ShardRegion.ExtractEntityId = {
     case msg @ Command(id) => ((id % shardNames.size).toString, msg)
   }
@@ -34,7 +36,7 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
   def createShard(role: String) = {
     log.info(s"Create local shard for {}", role)
     (role, ClusterSharding(system).start(
-      typeName = "replicas",
+      typeName = domainName,
       entityProps = DomainEntity.props(role),
       settings = ClusterShardingSettings(system).withRole(role).withRememberEntities(true),
       extractEntityId = entityId,
@@ -46,7 +48,7 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
   def createProxy(role: String) = {
     log.info(s"Create proxy for {}", role)
     (role, ClusterSharding(system).startProxy(
-      typeName = "replicas",
+      typeName = domainName,
       role = Some(role),
       extractEntityId = entityId,
       extractShardId = shardId

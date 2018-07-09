@@ -31,15 +31,6 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
     case ShardRegion.StartEntity(id) => shardNames(id.hashCode % shardNames.size)
   }
 
-  /*def entityId(role: String): ShardRegion.ExtractEntityId = {
-    case msg @ Command(_) => (role.toString, msg)
-  }
-
-  def shardId(role: String): ShardRegion.ExtractShardId = {
-    case Command(_) => role
-    case ShardRegion.StartEntity(_) => role
-  }*/
-
   def createShard(role: String) = {
     log.info(s"Create local shard for {}", role)
     (role, ClusterSharding(system).start(
@@ -63,7 +54,7 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
   }
 
   val shardsWithRoles = Vector(createShard(hostedShard), createProxy(proxy))
-  val shardNames = shardsWithRoles.map("shards-" + _._1)
+  val shardNames = shardsWithRoles.map("shard-" + _._1)
   val shardRegions = shardsWithRoles.map(_._2)
 
   val shards = shardRegions.zipWithIndex./:(Map.empty[Int, ActorRef]) { (acc, c) =>
@@ -83,8 +74,7 @@ class ShardWriter(system: ActorSystem, hostedShard: String, proxy: String, inter
        log.info("writer pick {} for message {}", role, i)
        shardRegion ! Command(i)
        i = i + 1
-       //if(i % shardNames.size == 0)
-       context.become(active(index + 1))
+       context become active(index + 1)
   }
 }
 
@@ -94,11 +84,9 @@ object DomainEntity {
 }
 
 class DomainEntity(role: String) extends Actor with ActorLogging {
-  log.info(s"++++++++++ start DomainEntity for {} ", role)
   val postfix = UUID.randomUUID().toString.take(6)
-
   val replicator =
-    context.actorOf(ReplicatorForShardS.props(role), s"rentity-$role-$postfix")
+    context.actorOf(ReplicatorForShardS.props(role), s"entity-$role-$postfix")
 
   override def receive = {
     case cmd: Command =>

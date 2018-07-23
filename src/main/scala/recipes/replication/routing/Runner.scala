@@ -61,7 +61,8 @@ object Runner extends App {
        }
       """)
 
-  def portConfig(port: Int) = ConfigFactory.parseString(s"akka.remote.artery.canonical.port = $port")
+  def portConfig(port: Int) =
+    ConfigFactory.parseString(s"akka.remote.artery.canonical.port = $port")
 
   val node1 = ActorSystem(systemName, portConfig(2550).withFallback(configA))
   val node2 = ActorSystem(systemName, portConfig(2551).withFallback(configB))

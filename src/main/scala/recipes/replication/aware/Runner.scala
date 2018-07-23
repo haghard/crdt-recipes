@@ -1,4 +1,4 @@
-package recipes.replication.routing
+package recipes.replication.aware
 
 import akka.actor.ActorSystem
 import akka.cluster.Cluster
@@ -11,9 +11,7 @@ import scala.concurrent.duration._
 POC of this approach
   https://groups.google.com/forum/#!topic/akka-user/MO-4XhwhAN0 with router group
 
-Sharded replication with distributed data using router group
-
-runMain recipes.replication.routing.Runner
+runMain recipes.replication.aware.Runner
 
 */
 object Runner extends App {
@@ -26,8 +24,9 @@ object Runner extends App {
     s"""
        akka {
           cluster {
-            roles = [ ${shards(0)}, ${shards(1)} ]
+            roles = [ ${shards(0)} ]
             jmx.multi-mbeans-in-same-jvm = on
+            auto-down-unreachable-after = 4s
           }
           actor.provider = cluster
           remote.artery.enabled = true
@@ -39,8 +38,9 @@ object Runner extends App {
     s"""
        akka {
           cluster {
-            roles = [ ${shards(0)}, ${shards(2)} ]
+            roles = [ ${shards(1)} ]
             jmx.multi-mbeans-in-same-jvm = on
+            auto-down-unreachable-after = 4s
           }
           actor.provider = cluster
           remote.artery.enabled = true
@@ -52,8 +52,9 @@ object Runner extends App {
     s"""
        akka {
           cluster {
-            roles = [ ${shards(1)}, ${shards(2)} ]
+            roles = [ ${shards(2)} ]
             jmx.multi-mbeans-in-same-jvm = on
+            auto-down-unreachable-after = 4s
           }
           actor.provider = cluster
           remote.artery.enabled = true
@@ -78,10 +79,18 @@ object Runner extends App {
 
   Helpers.waitForAllNodesUp(node1, node2, node3)
 
+  val RF = 2
+
   //
-  node1.actorOf(RouterWriter.props(node1, Vector(shards(0), shards(1)), shards(2), 4.seconds, 0), "alpha-writer")
-  node2.actorOf(RouterWriter.props(node2, Vector(shards(0), shards(2)), shards(1), 3.seconds, 100), "betta-writer")
-  node3.actorOf(RouterWriter.props(node3, Vector(shards(1), shards(2)), shards(0), 1.seconds, 200),"gamma-writer")
+  node1.actorOf(ClusterAwareRouter.props(node1Cluster, 4.seconds, 0, RF), "alpha-writer")
+  node2.actorOf(ClusterAwareRouter.props(node2Cluster, 3.seconds, 100, RF), "betta-writer")
+  node3.actorOf(ClusterAwareRouter.props(node3Cluster, 1.seconds, 200, RF),"gamma-writer")
+
+
+  node1.actorOf(DBStorage.props, "storage")
+  node2.actorOf(DBStorage.props, "storage")
+  node3.actorOf(DBStorage.props, "storage")
+
 
   Helpers.wait(40.second)
 
@@ -94,7 +103,8 @@ object Runner extends App {
   val node31 = ActorSystem(systemName, portConfig(2552).withFallback(configC))
   val node31Cluster = Cluster(node31)
   node31Cluster.join(node1Cluster.selfAddress)
-  node31.actorOf(RouterWriter.props(node31, Vector(shards(1), shards(2)), shards(0), 1.seconds, 200), "gamma-writer")
+  node31.actorOf(ClusterAwareRouter.props(node31Cluster, 1.seconds, 200, RF), "gamma-writer")
+  node31.actorOf(DBStorage.props, "storage")
 
   Helpers.wait(50.second)
 

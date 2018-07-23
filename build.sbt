@@ -107,10 +107,9 @@ val project = Project(
 ) configs (MultiJvm)
 */
 
-
 //https://tpolecat.github.io/2017/04/25/scalac-flags.html
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 
-//"com.rbmhtechnology" %% "eventuate-crdt"  % "0.9"
-//com.rbmhtechnology:eventuate-crdt_2.12:0.9         (depends on 2.4.12)
+//"com.rbmhtechnology" %% "eventuate-crdt"  % "0.10"
+//com.rbmhtechnology:eventuate-crdt_2.12:0.10

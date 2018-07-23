@@ -3,11 +3,11 @@ package recipes
 import java.nio.ByteBuffer
 import java.util
 import java.util.concurrent.ConcurrentSkipListSet
-
 import recipes.users.Node
 
 import scala.collection.immutable.SortedSet
 import com.twitter.algebird.CassandraMurmurHash
+import recipes.replication.aware.ClusterAwareRouter.Replica
 
 package object hashing {
 
@@ -169,8 +169,15 @@ package object hashing {
     }
 
     implicit def instance1 = new Rendezvous[Node] {
-      override def toBinary(node: Node): Array[Byte] = s"${node.host}:${node.port}".getBytes(Encoding)
+      override def toBinary(node: Node): Array[Byte] =
+        s"${node.host}:${node.port}".getBytes(Encoding)
       override def validated(node: Node): Boolean = true
+    }
+
+    implicit def instance2  = new Rendezvous[Replica] {
+      override def toBinary(node: Replica): Array[Byte] =
+        s"${node.a.host}:${node.a.port}".getBytes(Encoding)
+      override def validated(shard: Replica): Boolean = true
     }
   }
 }

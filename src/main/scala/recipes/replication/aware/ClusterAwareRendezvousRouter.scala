@@ -31,25 +31,26 @@ object ClusterAwareRendezvousRouter {
 
   val StoragePath = "/user/storage"
 
-  def props(cluster: Cluster, interval: FiniteDuration, startWith: Int, rf: Int) =
-    Props(new ClusterAwareRendezvousRouter(cluster, interval, startWith, rf))
+  def props(cluster: Cluster, interval: FiniteDuration, startWith: Int, RF: Int, WC: Int) =
+    Props(new ClusterAwareRendezvousRouter(cluster, interval, startWith, RF, WC))
 }
 
-class ClusterAwareRendezvousRouter(cluster: Cluster, interval: FiniteDuration, startWith: Int, RF: Int) extends Actor
+class ClusterAwareRendezvousRouter(cluster: Cluster, interval: FiniteDuration,
+  startWith: Int, RF: Int, WC: Int) extends Actor
   with ActorLogging with akka.actor.Timers {
 
-  val writeTO = akka.util.Timeout(1.second)
   implicit val _ = context.dispatcher
 
-  timers.startPeriodicTimer(Tick0, Tick0, interval)
+  val writeTimeout = akka.util.Timeout(1.second)
 
-  //val hash = hashing.Rendezvous[Replica]
 
   override def postStop(): Unit =
     cluster.unsubscribe(self)
 
-  override def preStart =
+  override def preStart = {
+    timers.startPeriodicTimer(Tick0, Tick0, interval)
     cluster.subscribe(self, classOf[ClusterDomainEvent])
+  }
 
   def run(liveMembers: SortedSet[Member], hash: hashing.Rendezvous[Replica], i: Int): Receive = {
     case MemberUp(member) =>
@@ -86,10 +87,9 @@ class ClusterAwareRendezvousRouter(cluster: Cluster, interval: FiniteDuration, s
 
       log.info("replicate {} to [{}]", uuid.toString, replicas.map {
         _.a
-      }.mkString(" and "))
+      }.mkString(" - "))
 
-      /*ActorPath.fromString()*/
-      val selections = replicas
+      val selections = replicas.toVector
         .map { r =>
           val path = new StringBuilder()
             .append(r.a.toString)
@@ -98,16 +98,24 @@ class ClusterAwareRendezvousRouter(cluster: Cluster, interval: FiniteDuration, s
           context.actorSelection(path)
         }
 
-      val writes = selections.map(s => ((s ask uuid) (writeTO)).mapTo[WriteResponse])
+      val(ws, others) = selections.splitAt(WC)
 
-      //assumes WriteConsistency == RF
-      Future.sequence(writes).onComplete {
+      //To meet WriteConsistency
+      //TODO pipeTo self to catch errors
+      Future.sequence(ws.map(s => ((s ask uuid) (writeTimeout)).mapTo[WriteResponse])).onComplete {
         case Success(r) =>
         //log.info("Successful replication for value {}", i)
         case Failure(ex) =>
-          log.error(ex, "Write error for value {}. Replica|s is|are available", i)
-        //self ! Kill
+          log.error(ex, "Write error for value {}. Replica|s is|are available", uuid.toString)
+          //self ! Kill
       }
+
+      //
+      Future.sequence(others.map(s => ((s ask uuid) (writeTimeout)).mapTo[WriteResponse])).onComplete {
+        case Success(_) =>
+        case Failure(_) =>
+      }
+
       context become run(liveMembers, hash, i + 1)
   }
 

@@ -80,11 +80,12 @@ object Runner extends App {
   Helpers.waitForAllNodesUp(node1, node2, node3)
 
   val RF = 2
+  val CL = 2
 
   //
-  node1.actorOf(ClusterAwareRendezvousRouter.props(node1Cluster, 3.seconds, 0, RF), "alpha-writer")
-  node2.actorOf(ClusterAwareRendezvousRouter.props(node2Cluster, 2.seconds, 100, RF), "betta-writer")
-  node3.actorOf(ClusterAwareRendezvousRouter.props(node3Cluster, 1.seconds, 200, RF),"gamma-writer")
+  node1.actorOf(ClusterAwareRendezvousRouter.props(node1Cluster, 3.seconds, 0, RF, CL), "alpha-writer")
+  node2.actorOf(ClusterAwareRendezvousRouter.props(node2Cluster, 2.seconds, 100, RF, CL), "betta-writer")
+  node3.actorOf(ClusterAwareRendezvousRouter.props(node3Cluster, 1.seconds, 200, RF, CL),"gamma-writer")
 
 
   node1.actorOf(DBStorage.props, "storage")
@@ -103,7 +104,7 @@ object Runner extends App {
   val node31 = ActorSystem(systemName, portConfig(2552).withFallback(configC))
   val node31Cluster = Cluster(node31)
   node31Cluster.join(node1Cluster.selfAddress)
-  node31.actorOf(ClusterAwareRendezvousRouter.props(node31Cluster, 1.seconds, 200, RF), "gamma-writer")
+  node31.actorOf(ClusterAwareRendezvousRouter.props(node31Cluster, 1.seconds, 200, RF, CL), "gamma-writer")
   node31.actorOf(DBStorage.props, "storage")
 
   Helpers.wait(50.second)

@@ -7,7 +7,7 @@ import recipes.users.Node
 
 import scala.collection.immutable.SortedSet
 import com.twitter.algebird.CassandraMurmurHash
-import recipes.replication.aware.ClusterAwareRouter.Replica
+import recipes.replication.aware.ClusterAwareRendezvousRouter.Replica
 
 package object hashing {
 

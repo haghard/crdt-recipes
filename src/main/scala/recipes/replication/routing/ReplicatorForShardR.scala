@@ -86,12 +86,13 @@ class ReplicatorForShardR(system: ActorSystem, shardName: String) extends Actor 
       val correlationId = UUID.randomUUID.toString
       akkaReplicator ! Update(DataKey, GSet.empty[Int], WriteLocal, Some(correlationId))(_.+(c.i))
     case UpdateSuccess(DataKey, Some(correlationId)) =>
-       //replyTo ! "ack"
+       
+      //replyTo ! "ack"
     case UpdateTimeout(DataKey, Some(correlationId)) =>
        //replyTo ! "nack"
     case c @ Changed(DataKey) =>
       val numbers = c.get(DataKey).elements
-      //if(DataKey._id == "gamma-key")
+      //
       log.info(s"Change on shard: {} - {}", shardName, numbers.toSeq.sorted.mkString(","))
      case ModifyFailure(DataKey, error, cause, Some(correlationId)) =>
        log.error(s"ModifyFailure on shard: {} for key {} {}", shardName, DataKey, correlationId)

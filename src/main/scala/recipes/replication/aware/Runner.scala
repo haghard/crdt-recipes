@@ -82,18 +82,18 @@ object Runner extends App {
   val RF = 2
 
   //
-  node1.actorOf(ClusterAwareRouter.props(node1Cluster, 4.seconds, 0, RF), "alpha-writer")
-  node2.actorOf(ClusterAwareRouter.props(node2Cluster, 3.seconds, 100, RF), "betta-writer")
-  node3.actorOf(ClusterAwareRouter.props(node3Cluster, 1.seconds, 200, RF),"gamma-writer")
+  node1.actorOf(ClusterAwareRendezvousRouter.props(node1Cluster, 3.seconds, 0, RF), "alpha-writer")
+  node2.actorOf(ClusterAwareRendezvousRouter.props(node2Cluster, 2.seconds, 100, RF), "betta-writer")
+  node3.actorOf(ClusterAwareRendezvousRouter.props(node3Cluster, 1.seconds, 200, RF),"gamma-writer")
 
 
   node1.actorOf(DBStorage.props, "storage")
   node2.actorOf(DBStorage.props, "storage")
   node3.actorOf(DBStorage.props, "storage")
 
-
   Helpers.wait(40.second)
 
+  println("****************** Kill node3 *********************")
   node3Cluster.leave(node3Cluster.selfAddress)
   node3.terminate
 
@@ -103,10 +103,11 @@ object Runner extends App {
   val node31 = ActorSystem(systemName, portConfig(2552).withFallback(configC))
   val node31Cluster = Cluster(node31)
   node31Cluster.join(node1Cluster.selfAddress)
-  node31.actorOf(ClusterAwareRouter.props(node31Cluster, 1.seconds, 200, RF), "gamma-writer")
+  node31.actorOf(ClusterAwareRendezvousRouter.props(node31Cluster, 1.seconds, 200, RF), "gamma-writer")
   node31.actorOf(DBStorage.props, "storage")
 
   Helpers.wait(50.second)
+
 
   node1Cluster.leave(node1Cluster.selfAddress)
   node1.terminate
@@ -116,5 +117,4 @@ object Runner extends App {
 
   node31Cluster.leave(node31Cluster.selfAddress)
   node31.terminate
-
 }

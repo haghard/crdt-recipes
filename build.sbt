@@ -4,6 +4,8 @@ import sbt.CrossVersion
 
 val akkaVersion = "2.5.14"
 
+resolvers += Resolver.sonatypeRepo("snapshots")
+
 val `crdt-recipes` = project
   .in(file("."))
   .settings(SbtMultiJvm.multiJvmSettings: _*)
@@ -39,6 +41,8 @@ val `crdt-recipes` = project
       //"com.rbmhtechnology" %% "eventuate-crdt" % "0.10",
 
       "Merlijn Boogerd" %% "computational-crdts" % "1.0",
+
+      //"org.scalaz" %% "scalaz-zio" % "0.1-SNAPSHOT",
 
       "com.github.mpilquist" %% "simulacrum" % "0.12.0",
       "com.typesafe.akka" %% "akka-multi-node-testkit" % akkaVersion
